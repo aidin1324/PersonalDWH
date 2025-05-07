@@ -5,18 +5,15 @@ from ..repositories.telegram import TelegramRepository
 from ..schemas.telegram import Chat, Message, ChatType, Sender
 from telethon.tl.types import User as TelethonUser, Chat as TelethonChat, Channel as TelethonChannel
 from typing import List, Optional
+from fastapi import Request
 
 class TelegramService:
-    """
-    Сервис для бизнес-логики Telegram.
-    """
+    """Business logic for Telegram operations."""
     @staticmethod
-    async def get_chats(client, filter_type: ChatType, limit: int) -> List[Chat]:
-        """
-        Получает список чатов с фильтрацией по типу.
-        """
+    async def get_chats(client, filter_type: ChatType, limit: int) -> list[Chat]:
+        """Get a list of chats filtered by type."""
         dialogs = await TelegramRepository.get_dialogs(client)
-        result_chats: List[Chat] = []
+        result_chats: list[Chat] = []
         for dialog in dialogs:
             chat_type_actual: ChatType = ChatType.PERSONAL
             if dialog.is_user:
@@ -29,7 +26,7 @@ class TelegramService:
                 continue
             last_msg_pydantic = None
             if dialog.message:
-                last_msg_pydantic = await TelegramService._convert_telethon_message(dialog.message, client)
+                last_msg_pydantic = await TelegramService._convert_telethon_message(dialog.message, client, dialog.id)
             chat_model = Chat(
                 id=dialog.id,
                 type=chat_type_actual,
@@ -44,9 +41,7 @@ class TelegramService:
 
     @staticmethod
     async def get_chats_stats(client) -> dict:
-        """
-        Возвращает статистику непрочитанных сообщений по типам чатов.
-        """
+        """Get unread messages statistics by chat type."""
         dialogs = await TelegramRepository.get_dialogs(client)
         stats = {"personal_unread": 0, "group_unread": 0, "channel_unread": 0}
         for dialog in dialogs:
@@ -60,9 +55,7 @@ class TelegramService:
 
     @staticmethod
     async def send_message(client, chat_id: int, text: str) -> bool:
-        """
-        Отправляет сообщение в чат.
-        """
+        """Send a message to a chat."""
         try:
             await client.send_message(chat_id, text)
             return True
@@ -70,23 +63,19 @@ class TelegramService:
             return False
 
     @staticmethod
-    async def get_chat_messages(client, chat_id: int, limit: int, offset_id: int = 0) -> List[Message]:
-        """
-        Получает сообщения из чата.
-        """
+    async def get_chat_messages(client, chat_id: int, limit: int, offset_id: int = 0) -> list[Message]:
+        """Get messages from a chat."""
         messages = await TelegramRepository.get_messages(client, chat_id, limit, offset_id)
-        result_messages: List[Message] = []
+        result_messages: list[Message] = []
         for msg in messages:
-            pydantic_msg = await TelegramService._convert_telethon_message(msg, client)
+            pydantic_msg = await TelegramService._convert_telethon_message(msg, client, chat_id)
             if pydantic_msg:
                 result_messages.append(pydantic_msg)
         return result_messages
 
     @staticmethod
-    async def _convert_telethon_message(msg, client) -> Optional[Message]:
-        """
-        Преобразует Telethon Message в Pydantic Message с поддержкой медиа и статуса прочтения.
-        """
+    async def _convert_telethon_message(msg, client, chat_id: int) -> Optional[Message]:
+        """Convert Telethon Message to Pydantic Message with media and read status support."""
         if not msg:
             return None
         sender_entity = None
@@ -104,24 +93,24 @@ class TelegramService:
                     sender_name = sender_entity.title
             except Exception:
                 pass
-        # Определение медиа
         media_type = None
         media_url = None
         duration = None
         if msg.sticker:
             media_type = "sticker"
+            media_url = f"/media/{chat_id}/{msg.id}"
         elif msg.photo:
             media_type = "photo"
+            media_url = f"/media/{chat_id}/{msg.id}"
         elif msg.voice:
             media_type = "voice"
             duration = getattr(msg.voice, 'duration', None)
+            media_url = f"/media/{chat_id}/{msg.id}"
         elif msg.document:
             media_type = "document"
-        # Для простоты media_url не реализован (можно добавить скачивание и отдачу файлов)
-        # Статус прочтения
+            media_url = f"/media/{chat_id}/{msg.id}"
         is_read = getattr(msg, 'read', None)
         if is_read is None:
-            # Для входящих сообщений: если не прочитано, msg.unread = True
             is_read = not getattr(msg, 'unread', False)
         return Message(
             id=msg.id,

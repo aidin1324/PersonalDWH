@@ -2,6 +2,8 @@
 FastAPI endpoints для Telegram API.
 """
 from fastapi import APIRouter, Depends, Query, HTTPException, Body
+from fastapi.responses import StreamingResponse
+import io
 from ..core.dependencies import get_telegram_client
 from ..services.telegram import TelegramService
 from ..schemas.telegram import Chat, ChatType, Message, ChatStats
@@ -47,3 +49,33 @@ async def send_message(
     if not success:
         raise HTTPException(status_code=500, detail="Failed to send message")
     return {"status": "ok"}
+
+@router.get("/media/{chat_id}/{message_id}")
+async def download_media(chat_id: int, message_id: int, tg_client = Depends(get_telegram_client)):
+    """
+    Download media (photo, sticker, voice, document) from a message.
+    """
+    from telethon.tl.types import MessageMediaPhoto, MessageMediaDocument
+    entity = await tg_client.get_entity(chat_id)
+    msg = await tg_client.get_messages(entity, ids=message_id)
+    if not msg or not (msg.photo or msg.document or msg.sticker or msg.voice):
+        raise HTTPException(status_code=404, detail="Media not found")
+    file_bytes = await tg_client.download_media(msg, file=bytes)
+    if not file_bytes:
+        raise HTTPException(status_code=404, detail="Failed to download media")
+    filename = f"media_{chat_id}_{message_id}"
+    if msg.photo:
+        filename += ".jpg"
+        content_type = "image/jpeg"
+    elif msg.sticker:
+        filename += ".webp"
+        content_type = "image/webp"
+    elif msg.voice:
+        filename += ".ogg"
+        content_type = "audio/ogg"
+    elif msg.document:
+        filename += ".bin"
+        content_type = "application/octet-stream"
+    else:
+        content_type = "application/octet-stream"
+    return StreamingResponse(io.BytesIO(file_bytes), media_type=content_type, headers={"Content-Disposition": f"inline; filename={filename}"})
