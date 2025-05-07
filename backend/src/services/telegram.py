@@ -4,16 +4,16 @@
 from ..repositories.telegram import TelegramRepository
 from ..schemas.telegram import Chat, Message, ChatType, Sender
 from telethon.tl.types import User as TelethonUser, Chat as TelethonChat, Channel as TelethonChannel
-from typing import List, Optional
+from typing import List, Optional, Dict
 from fastapi import Request
 
 class TelegramService:
     """Business logic for Telegram operations."""
     @staticmethod
-    async def get_chats(client, filter_type: ChatType, limit: int) -> list[Chat]:
+    async def get_chats(client, filter_type: ChatType, limit: int) -> List[Chat]:
         """Get a list of chats filtered by type."""
         dialogs = await TelegramRepository.get_dialogs(client)
-        result_chats: list[Chat] = []
+        result_chats: List[Chat] = []
         for dialog in dialogs:
             chat_type_actual: ChatType = ChatType.PERSONAL
             if dialog.is_user:
@@ -40,7 +40,7 @@ class TelegramService:
         return result_chats
 
     @staticmethod
-    async def get_chats_stats(client) -> dict:
+    async def get_chats_stats(client) -> Dict[str, object]:
         """Get unread messages statistics by chat type."""
         dialogs = await TelegramRepository.get_dialogs(client)
         stats = {"personal_unread": 0, "group_unread": 0, "channel_unread": 0}
@@ -63,10 +63,10 @@ class TelegramService:
             return False
 
     @staticmethod
-    async def get_chat_messages(client, chat_id: int, limit: int, offset_id: int = 0) -> list[Message]:
+    async def get_chat_messages(client, chat_id: int, limit: int, offset_id: int = 0) -> List[Message]:
         """Get messages from a chat."""
         messages = await TelegramRepository.get_messages(client, chat_id, limit, offset_id)
-        result_messages: list[Message] = []
+        result_messages: List[Message] = []
         for msg in messages:
             pydantic_msg = await TelegramService._convert_telethon_message(msg, client, chat_id)
             if pydantic_msg:
