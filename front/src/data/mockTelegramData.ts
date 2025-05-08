@@ -1,10 +1,10 @@
 import type { Chat, User, Message } from '../types/telegram';
 
 const mockUsers: Record<string, User> = {
-  u1: { id: "u1", name: "Alice", avatar: "https://i.pravatar.cc/150?u=alice" },
-  u2: { id: "u2", name: "Bob", avatar: "https://i.pravatar.cc/150?u=bob" },
-  u3: { id: "u3", name: "Charlie", avatar: "https://i.pravatar.cc/150?u=charlie" },
-  me: { id: "me", name: "Me", avatar: "https://i.pravatar.cc/150?u=me" },
+  u1: { id: "u1", name: "Alice", avatar_url: "https://i.pravatar.cc/150?u=alice" },
+  u2: { id: "u2", name: "Bob", avatar_url: "https://i.pravatar.cc/150?u=bob" },
+  u3: { id: "u3", name: "Charlie", avatar_url: "https://i.pravatar.cc/150?u=charlie" },
+  me: { id: "me", name: "Me", avatar_url: "https://i.pravatar.cc/150?u=me" },
 };
 
 const mockMessages: Record<string, Message[]> = {
@@ -31,36 +31,36 @@ export const mockChats: Chat[] = [
     id: "chat1",
     type: "personal",
     name: "Alice",
-    avatar: mockUsers.u1.avatar,
-    lastMessage: mockMessages.chat1[mockMessages.chat1.length - 1],
-    unreadCount: 2,
+    avatar_url: mockUsers.u1.avatar_url,
+    last_message: mockMessages.chat1[mockMessages.chat1.length - 1],
+    unread_count: 2,
     messages: mockMessages.chat1,
   },
   {
     id: "chat2",
     type: "group",
     name: "Project Team",
-    avatar: "https://i.pravatar.cc/150?u=group1",
-    lastMessage: mockMessages.chat2[mockMessages.chat2.length - 1],
-    unreadCount: 0,
+    avatar_url: "https://i.pravatar.cc/150?u=group1",
+    last_message: mockMessages.chat2[mockMessages.chat2.length - 1],
+    unread_count: 0,
     messages: mockMessages.chat2,
   },
   {
     id: "chat3",
     type: "channel",
     name: "Tech News",
-    avatar: "https://i.pravatar.cc/150?u=channel1",
-    lastMessage: mockMessages.chat3[mockMessages.chat3.length - 1],
-    unreadCount: 1,
+    avatar_url: "https://i.pravatar.cc/150?u=channel1",
+    last_message: mockMessages.chat3[mockMessages.chat3.length - 1],
+    unread_count: 1,
     messages: mockMessages.chat3,
   },
   {
     id: "chat4",
     type: "personal",
     name: "Bob",
-    avatar: mockUsers.u2.avatar,
-    lastMessage: mockMessages.chat4[mockMessages.chat4.length - 1],
-    unreadCount: 1,
+    avatar_url: mockUsers.u2.avatar_url,
+    last_message: mockMessages.chat4[mockMessages.chat4.length - 1],
+    unread_count: 1,
     messages: mockMessages.chat4,
   },
 ];

@@ -8,19 +8,39 @@ interface NavItem {
   count?: number;
 }
 
-const Sidebar: React.FC = () => {
+interface SidebarProps {
+  stats?: {
+    personal_unread?: number;
+    group_unread?: number;
+    channel_unread?: number;
+    [key: string]: number | undefined;
+  };
+}
+
+const Sidebar: React.FC<SidebarProps> = ({ stats = {} }) => {
   const [activeItem, setActiveItem] = useState('telegram');
   
+  const telegramUnreadCount = 
+    (stats.personal_unread || 0) + 
+    (stats.group_unread || 0) + 
+    (stats.channel_unread || 0);
+  
+  // Format badge count for display (e.g. 99+ for large numbers)
+  const formatBadgeCount = (count: number): string => {
+    if (count > 99) return '99+';
+    return count.toString();
+  };
+
   const navItems: NavItem[] = [
     {
       id: 'telegram',
       name: 'Telegram',
       icon: (
         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.57-1.39-.93-2.23-1.47-.99-.65-.35-1 .22-1.57.15-.15 2.63-2.42 2.68-2.63.01-.03.01-.14-.06-.2-.07-.07-.21-.04-.3-.02-.13.03-2.2 1.4-3.22 2.05-.3.2-.86.43-1.26.42-.42-.01-1.22-.24-1.82-.44-.73-.24-1.32-.37-1.27-.8.03-.24.35-.47 1.34-.89 5.27-2.29 7.01-3.04 7.37-3.18.92-.35 1.99-.73 2.5.52.16.39.25.82.19 1.22.01 0 .23 2.35.23 2.47z" />
+          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.57-1.39-.93-2.23-1.47-.99-.65-.35-1 .22-1.57.15-.15 2.63-2.42 2.68-2.63.01-.03.01-.14-.06-.2-.07-.07-.21-.04-.3-.02-.13.03-2.2 1.4-3.22 2.05-.3.2-.86.43-1.26.42-.42-.01-1.22-.24-1.82-.44-.74-.24-1.33-.36-1.28-.77.03-.22.18-.43 1.27-.95 3.56-1.62 4.73-2.13 5.27-2.19 1.8-.22 2.06.43 1.92 1.3z" />
         </svg>
       ),
-      count: 5
+      count: telegramUnreadCount
     },
     {
       id: 'news',
@@ -47,7 +67,6 @@ const Sidebar: React.FC = () => {
       name: 'Settings',
       icon: (
         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c-.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
         </svg>
       )
@@ -99,14 +118,15 @@ const Sidebar: React.FC = () => {
             </div>
             
             {item.count !== undefined && item.count > 0 && (
-              <motion.span 
+              <motion.div 
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
                 transition={{ type: "spring", stiffness: 500, damping: 15 }}
-                className="h-5 w-5 rounded-full bg-purple-400 flex items-center justify-center text-xs font-bold"
+                className={`flex items-center justify-center rounded-full bg-purple-400 text-xs font-bold 
+                  ${item.count > 9 ? 'min-w-[22px] px-1' : 'w-5 h-5'}`}
               >
-                {item.count}
-              </motion.span>
+                {formatBadgeCount(item.count)}
+              </motion.div>
             )}
           </motion.button>
         ))}
@@ -119,12 +139,22 @@ const Sidebar: React.FC = () => {
         className="mt-auto pt-8"
       >
         <div className="bg-indigo-800/50 rounded-xl p-4 mt-8">
-          <h3 className="text-sm font-medium text-purple-200 mb-2">Daily Summary</h3>
-          <p className="text-xs text-gray-300">5 new messages from Alice</p>
-          <p className="text-xs text-gray-300">3 news updates</p>
+          <h3 className="text-sm font-medium text-purple-200 mb-2">Unread Messages</h3>
+          {stats.personal_unread ? (
+            <p className="text-xs text-gray-300">{stats.personal_unread} personal chat{stats.personal_unread !== 1 ? 's' : ''}</p>
+          ) : null}
+          {stats.group_unread ? (
+            <p className="text-xs text-gray-300">{stats.group_unread} group message{stats.group_unread !== 1 ? 's' : ''}</p>
+          ) : null}
+          {stats.channel_unread ? (
+            <p className="text-xs text-gray-300">{stats.channel_unread} channel update{stats.channel_unread !== 1 ? 's' : ''}</p>
+          ) : null}
           <div className="mt-3 pt-3 border-t border-indigo-700/30">
-            <button className="text-xs text-purple-300 hover:text-white transition-colors">
-              View All Updates →
+            <button className="text-xs text-purple-300 hover:text-white transition-colors flex items-center">
+              <span>View All Messages</span>
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
             </button>
           </div>
         </div>

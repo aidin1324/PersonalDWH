@@ -107,13 +107,13 @@ export class AIAgentService {
     await this.simulateApiDelay();
     
     // Get the most recent message for context
-    const lastMessage = messages[messages.length - 1];
+    const last_message = messages[messages.length - 1];
     
     let draftedResponse = "I've reviewed the information and I'm available to meet tomorrow. Let me know what time works best for you, and I'll make sure to prepare the reports you requested.";
     
-    if (lastMessage.text.toLowerCase().includes('meeting')) {
+    if (last_message.text.toLowerCase().includes('meeting')) {
       draftedResponse = "Yes, I can make the meeting tomorrow. What time would work best for you? I'll prepare the necessary materials.";
-    } else if (lastMessage.text.toLowerCase().includes('help')) {
+    } else if (last_message.text.toLowerCase().includes('help')) {
       draftedResponse = "I'd be happy to help with that. Could you provide a bit more information about what you need specifically?";
     }
 

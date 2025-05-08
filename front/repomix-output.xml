@@ -52,6 +52,7 @@ README.md
 src/App.tsx
 src/components/layout/Layout.tsx
 src/components/layout/Sidebar.tsx
+src/components/telegram/AIAssistant.tsx
 src/components/telegram/ChatItem.tsx
 src/components/telegram/ChatList.tsx
 src/components/telegram/ChatView.tsx
@@ -61,6 +62,8 @@ src/data/mockTelegramData.ts
 src/index.css
 src/main.tsx
 src/pages/TelegramPage.tsx
+src/services/AIAgentService.ts
+src/services/TelegramApiService.ts
 src/types/telegram.ts
 src/vite-env.d.ts
 tsconfig.app.json
@@ -137,7 +140,10 @@ export default tseslint.config(
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Vite + React + TS</title>
+    <title>Personal DWH | Your Digital Life Hub</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   </head>
   <body>
     <div id="root"></div>
@@ -159,7 +165,10 @@ export default tseslint.config(
     "preview": "vite preview"
   },
   "dependencies": {
+    "@heroicons/react": "^2.2.0",
     "@tailwindcss/vite": "^4.1.5",
+    "framer-motion": "^12.10.0",
+    "lucide-react": "^0.507.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "tailwindcss": "^4.1.5"
@@ -242,13 +251,26 @@ export default tseslint.config({
 </file>
 
 <file path="src/App.tsx">
+import { useState } from 'react';
 import Layout from './components/layout/Layout';
 import TelegramPage from './pages/TelegramPage';
 
 function App() {
+  const [unreadStats, setUnreadStats] = useState<{
+    personal_unread?: number;
+    group_unread?: number;
+    channel_unread?: number;
+    total?: number;
+  } | null>(null);
+  
+  // Handler to receive stats from TelegramPage
+  const handleStatsUpdate = (stats: any) => {
+    setUnreadStats(stats);
+  };
+
   return (
-    <Layout>
-      <TelegramPage />
+    <Layout stats={unreadStats || undefined}>
+      <TelegramPage onStatsUpdate={handleStatsUpdate} />
     </Layout>
   );
 }
@@ -258,19 +280,31 @@ export default App;
 
 <file path="src/components/layout/Layout.tsx">
 import React, { type ReactNode } from 'react';
+import { motion } from 'framer-motion';
 import Sidebar from './Sidebar';
 
 interface LayoutProps {
   children: ReactNode;
+  stats?: {
+    personal_unread?: number;
+    group_unread?: number;
+    channel_unread?: number;
+    total?: number;
+  };
 }
 
-const Layout: React.FC<LayoutProps> = ({ children }) => {
+const Layout: React.FC<LayoutProps> = ({ children, stats }) => {
   return (
-    <div className="flex h-screen bg-gray-100">
-      <Sidebar />
-      <main className="flex-1 p-6 overflow-y-auto">
+    <div className="flex h-screen bg-gray-50 overflow-hidden">
+      <Sidebar stats={stats} />
+      <motion.main 
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.5, delay: 0.3 }}
+        className="flex-1 p-6 overflow-y-auto"
+      >
         {children}
-      </main>
+      </motion.main>
     </div>
   );
 };
@@ -279,37 +313,322 @@ export default Layout;
 </file>
 
 <file path="src/components/layout/Sidebar.tsx">
-import React from 'react';
+import React, { useState, type JSX } from 'react';
+import { motion } from 'framer-motion';
 
-const Sidebar: React.FC = () => {
+interface NavItem {
+  id: string;
+  name: string;
+  icon: JSX.Element;
+  count?: number;
+}
+
+interface SidebarProps {
+  stats?: {
+    personal_unread?: number;
+    group_unread?: number;
+    channel_unread?: number;
+    [key: string]: number | undefined;
+  };
+}
+
+const Sidebar: React.FC<SidebarProps> = ({ stats = {} }) => {
+  const [activeItem, setActiveItem] = useState('telegram');
+  
+  const telegramunread_count = 
+    (stats.personal_unread || 0) + 
+    (stats.group_unread || 0) + 
+    (stats.channel_unread || 0);
+  
+  const navItems: NavItem[] = [
+    {
+      id: 'telegram',
+      name: 'Telegram',
+      icon: (
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.57-1.39-.93-2.23-1.47-.99-.65-.35-1 .22-1.57.15-.15 2.63-2.42 2.68-2.63.01-.03.01-.14-.06-.2-.07-.07-.21-.04-.3-.02-.13.03-2.2 1.4-3.22 2.05-.3.2-.86.43-1.26.42-.42-.01-1.22-.24-1.82-.44-.73-.24-1.32-.37-1.27-.8.03-.24.35-.47 1.34-.89 5.27-2.29 7.01-3.04 7.37-3.18.92-.35 1.99-.73 2.5.52.16.39.25.82.19 1.22.01 0 .23 2.35.23 2.47z" />
+        </svg>
+      ),
+      count: telegramunread_count
+    },
+    {
+      id: 'news',
+      name: 'News',
+      icon: (
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" />
+        </svg>
+      ),
+      count: 3
+    },
+    {
+      id: 'sports',
+      name: 'Sports',
+      icon: (
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+        </svg>
+      ),
+      count: 0
+    },
+    {
+      id: 'settings',
+      name: 'Settings',
+      icon: (
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c-.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+        </svg>
+      )
+    }
+  ];
+
   return (
-    <aside className="w-64 bg-gray-800 text-white p-4 space-y-2">
-      <h1 className="text-2xl font-semibold mb-4">Personal DWH</h1>
-      <nav>
-        <ul>
-          <li>
-            <a href="#" className="block py-2 px-3 bg-gray-700 rounded hover:bg-gray-600">Telegram</a>
-          </li>
-          <li>
-            <a href="#" className="block py-2 px-3 rounded hover:bg-gray-600">News</a>
-          </li>
-          <li>
-            <a href="#" className="block py-2 px-3 rounded hover:bg-gray-600">Sports</a>
-          </li>
-          <li>
-            <a href="#" className="block py-2 px-3 rounded hover:bg-gray-600">Settings</a>
-          </li>
-        </ul>
+    <motion.aside 
+      initial={{ x: -80, opacity: 0 }}
+      animate={{ x: 0, opacity: 1 }}
+      transition={{ duration: 0.5, ease: "easeOut" }}
+      className="w-72 bg-gradient-to-br from-indigo-900 to-purple-900 text-white p-5 shadow-xl"
+    >
+      <motion.div 
+        initial={{ y: -20, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ delay: 0.2, duration: 0.5 }}
+        className="flex items-center mb-8"
+      >
+        <div className="h-10 w-10 rounded-xl bg-white flex items-center justify-center mr-3">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-indigo-700" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 011 1v14a1 1 0 01-1 1H4a1 1 0 01-1-1V3zm5 10v2h4v-2H8zm0-3v2h7V10H8zm0-3v2h7V7H8zm-3 0a1 1 0 100 2 1 1 0 000-2zm0 3a1 1 0 100 2 1 1 0 000-2zm0 3a1 1 0 100 2 1 1 0 000-2z" clipRule="evenodd" />
+          </svg>
+        </div>
+        <h1 className="text-2xl font-bold">Personal DWH</h1>
+      </motion.div>
+      
+      <nav className="space-y-1">
+        {navItems.map((item, index) => (
+          <motion.button
+            key={item.id}
+            initial={{ x: -20, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            transition={{ delay: 0.3 + index * 0.1, duration: 0.5 }}
+            onClick={() => setActiveItem(item.id)}
+            className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-300 ${
+              activeItem === item.id 
+                ? 'bg-white/10 shadow-lg' 
+                : 'hover:bg-white/5'
+            }`}
+          >
+            <div className="flex items-center">
+              <div className={`${activeItem === item.id ? 'text-purple-300' : 'text-gray-300'} mr-3`}>
+                {item.icon}
+              </div>
+              <span className={`font-medium ${activeItem === item.id ? 'text-white' : 'text-gray-300'}`}>
+                {item.name}
+              </span>
+            </div>
+            
+            {item.count !== undefined && item.count > 0 && (
+              <motion.span 
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ type: "spring", stiffness: 500, damping: 15 }}
+                className="h-5 w-5 rounded-full bg-purple-400 flex items-center justify-center text-xs font-bold"
+              >
+                {item.count}
+              </motion.span>
+            )}
+          </motion.button>
+        ))}
       </nav>
-    </aside>
+
+      <motion.div 
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.8, duration: 0.5 }}
+        className="mt-auto pt-8"
+      >
+        <div className="bg-indigo-800/50 rounded-xl p-4 mt-8">
+          <h3 className="text-sm font-medium text-purple-200 mb-2">Unread Messages</h3>
+          {stats.personal_unread ? (
+            <p className="text-xs text-gray-300">{stats.personal_unread} personal chats</p>
+          ) : null}
+          {stats.group_unread ? (
+            <p className="text-xs text-gray-300">{stats.group_unread} group messages</p>
+          ) : null}
+          {stats.channel_unread ? (
+            <p className="text-xs text-gray-300">{stats.channel_unread} channel updates</p>
+          ) : null}
+          <div className="mt-3 pt-3 border-t border-indigo-700/30">
+            <button className="text-xs text-purple-300 hover:text-white transition-colors">
+              View All Messages →
+            </button>
+          </div>
+        </div>
+      </motion.div>
+    </motion.aside>
   );
 };
 
 export default Sidebar;
 </file>
 
+<file path="src/components/telegram/AIAssistant.tsx">
+import React, { useState } from 'react';
+import { motion } from 'framer-motion';
+import { XMarkIcon, ArrowPathIcon, ChatBubbleBottomCenterTextIcon, LightBulbIcon, ChartBarIcon } from '@heroicons/react/24/outline';
+import { SparklesIcon } from '@heroicons/react/24/solid';
+import type { Chat } from '../../types/telegram';
+import { analyzeConversation } from '../../services/AIAgentService';
+
+interface AIAssistantProps {
+  chat: Chat;
+  onClose: () => void;
+}
+
+type AnalysisType = 'sentiment' | 'summary' | 'suggestions' | null;
+
+const AIAssistant: React.FC<AIAssistantProps> = ({ chat, onClose }) => {
+  const [analysisType, setAnalysisType] = useState<AnalysisType>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [analysis, setAnalysis] = useState<string | null>(null);
+
+  const handleAnalyze = async (type: AnalysisType) => {
+    setAnalysisType(type);
+    setIsLoading(true);
+    
+    try {
+      const result = await analyzeConversation(chat, type || 'summary');
+      setAnalysis(result);
+    } catch (error) {
+      console.error('Analysis failed:', error);
+      setAnalysis('Sorry, I encountered an error while analyzing the conversation. Please try again later.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const resetAnalysis = () => {
+    setAnalysisType(null);
+    setAnalysis(null);
+  };
+
+  return (
+    <motion.div 
+      initial={{ height: 0, opacity: 0 }}
+      animate={{ height: 'auto', opacity: 1 }}
+      exit={{ height: 0, opacity: 0 }}
+      transition={{ duration: 0.3 }}
+      className="bg-gradient-to-br from-indigo-50 to-purple-50 border-t border-indigo-100 overflow-hidden"
+    >
+      <div className="p-4">
+        <div className="flex justify-between items-center mb-4">
+          <div className="flex items-center">
+            <SparklesIcon className="h-5 w-5 text-indigo-500 mr-2" />
+            <h3 className="font-medium text-indigo-900">AI Communication Assistant</h3>
+          </div>
+          <motion.button
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.9 }}
+            onClick={onClose}
+            className="text-gray-500 hover:text-gray-700"
+          >
+            <XMarkIcon className="h-5 w-5" />
+          </motion.button>
+        </div>
+
+        {!analysisType && !analysis ? (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+            <motion.button
+              whileHover={{ scale: 1.03 }}
+              whileTap={{ scale: 0.97 }}
+              onClick={() => handleAnalyze('sentiment')}
+              className="flex flex-col items-center p-3 bg-white rounded-lg shadow-sm border border-indigo-100 hover:border-indigo-300 transition-colors"
+            >
+              <ChartBarIcon className="h-6 w-6 text-indigo-600 mb-2" />
+              <span className="text-sm font-medium text-gray-800">Sentiment Analysis</span>
+              <span className="text-xs text-gray-500 mt-1">Analyze emotional tone</span>
+            </motion.button>
+
+            <motion.button
+              whileHover={{ scale: 1.03 }}
+              whileTap={{ scale: 0.97 }}
+              onClick={() => handleAnalyze('summary')}
+              className="flex flex-col items-center p-3 bg-white rounded-lg shadow-sm border border-indigo-100 hover:border-indigo-300 transition-colors"
+            >
+              <ChatBubbleBottomCenterTextIcon className="h-6 w-6 text-indigo-600 mb-2" />
+              <span className="text-sm font-medium text-gray-800">Conversation Summary</span>
+              <span className="text-xs text-gray-500 mt-1">Get key points</span>
+            </motion.button>
+
+            <motion.button
+              whileHover={{ scale: 1.03 }}
+              whileTap={{ scale: 0.97 }}
+              onClick={() => handleAnalyze('suggestions')}
+              className="flex flex-col items-center p-3 bg-white rounded-lg shadow-sm border border-indigo-100 hover:border-indigo-300 transition-colors"
+            >
+              <LightBulbIcon className="h-6 w-6 text-indigo-600 mb-2" />
+              <span className="text-sm font-medium text-gray-800">Reply Suggestions</span>
+              <span className="text-xs text-gray-500 mt-1">Get response ideas</span>
+            </motion.button>
+          </div>
+        ) : (
+          <div className="bg-white rounded-lg shadow-sm p-4 border border-indigo-100 mb-4">
+            <div className="flex items-center mb-3">
+              <span className="text-sm font-medium text-indigo-800 mr-2">
+                {analysisType === 'sentiment' ? 'Sentiment Analysis' : 
+                 analysisType === 'summary' ? 'Conversation Summary' : 
+                 analysisType === 'suggestions' ? 'Reply Suggestions' : 'Analysis'}
+              </span>
+              <motion.button
+                whileHover={{ scale: 1.1 }}
+                whileTap={{ scale: 0.9 }}
+                onClick={resetAnalysis}
+                className="p-1 rounded-full bg-indigo-50 text-indigo-500 hover:bg-indigo-100"
+              >
+                <ArrowPathIcon className="h-3.5 w-3.5" />
+              </motion.button>
+            </div>
+            
+            {isLoading ? (
+              <div className="flex flex-col items-center justify-center py-6">
+                <motion.div 
+                  animate={{ rotate: 360 }}
+                  transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
+                >
+                  <SparklesIcon className="h-8 w-8 text-indigo-400" />
+                </motion.div>
+                <p className="text-sm text-gray-500 mt-3">Analyzing the conversation...</p>
+              </div>
+            ) : (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="prose-sm max-w-none text-gray-700"
+              >
+                {analysis && 
+                  analysis.split('\n').map((paragraph, i) => (
+                    <p key={i}>{paragraph}</p>
+                  ))
+                }
+              </motion.div>
+            )}
+          </div>
+        )}
+        
+        <p className="text-xs text-gray-500 italic">
+          Note: AI analysis is for assistance only. For best results, provide clear context.
+        </p>
+      </div>
+    </motion.div>
+  );
+};
+
+export default AIAssistant;
+</file>
+
 <file path="src/components/telegram/ChatItem.tsx">
 import React from 'react';
+import { motion } from 'framer-motion';
 import type { Chat } from '../../types/telegram';
 
 interface ChatItemProps {
@@ -319,35 +638,137 @@ interface ChatItemProps {
 }
 
 const ChatItem: React.FC<ChatItemProps> = ({ chat, isSelected, onSelectChat }) => {
-  const { name, avatar, lastMessage, unreadCount } = chat;
+  // Extract values from chat, handle both camelCase and snake_case formats for compatibility
+  const { name, avatar_url, last_message, last_message, avatar_url } = chat;
+  
+  // Use last_message from API or fallback to last_message for backward compatibility
+  const message = last_message || last_message;
+  
+  // Handle unread count from API response (unread_count) or fallback to old format
+  const unread_count = typeof chat.unread_count === 'number' ? chat.unread_count : (chat.unread_count || 0);
+  
+  const truncateText = (text: string, maxLength: number) => {
+    return text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
+  };
+  
+  // Handle both timestamp and date formats from API
+  const messageTime = message
+    ? ('timestamp' in message && typeof message.timestamp === 'number'
+        ? message.timestamp
+        : ('date' in message && typeof message.date === 'number'
+            ? message.date * 1000
+            : 0))
+    : 0;
+  const formattedTime = messageTime
+    ? new Date(messageTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : '';
+
+  // Extract message text, handle both API and mock data formats
+  const messageText = message ? (message.text || '') : '';
+  const senderName = message?.sender?.name || '';
+  const isOwnMessage = senderName.toLowerCase() === 'me' || message?.sender?.id === 'me';
+  
+  const messagePreview = message 
+    ? `${isOwnMessage ? "You: " : ""}${truncateText(messageText, 35)}`
+    : "No messages yet";
+
+  const getAvatarFallback = (name: string) => {
+    const firstLetter = name.charAt(0).toUpperCase();
+    // Simple hash function to get a color
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) {
+      hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const colors = [
+      'bg-red-500', 'bg-orange-500', 'bg-amber-500', 'bg-yellow-500', 'bg-lime-500',
+      'bg-green-500', 'bg-emerald-500', 'bg-teal-500', 'bg-cyan-500', 'bg-sky-500',
+      'bg-blue-500', 'bg-indigo-500', 'bg-violet-500', 'bg-purple-500', 'bg-fuchsia-500',
+      'bg-pink-500', 'bg-rose-500'
+    ];
+    const color = colors[Math.abs(hash) % colors.length];
+    return (
+      <div className={`w-12 h-12 rounded-full mr-3 flex items-center justify-center text-white font-semibold text-xl shadow-sm border border-gray-200 ${color}`}>
+        {firstLetter}
+      </div>
+    );
+  };
 
   return (
-    <div
-      className={`flex items-center p-3 hover:bg-gray-200 cursor-pointer ${isSelected ? "bg-gray-200" : "bg-white"}`}
-      onClick={() => onSelectChat(chat.id)}
+    <motion.div
+      whileHover={{ backgroundColor: isSelected ? "rgb(224, 231, 255, 0.6)" : "rgb(243, 244, 246, 0.6)" }}
+      transition={{ duration: 0.2 }}
+      onClick={() => onSelectChat(String(chat.id))}
+      className={`flex items-center p-3 cursor-pointer transition-all duration-200 border-b border-gray-100
+        ${isSelected 
+          ? "bg-indigo-50 border-l-4 border-l-indigo-500" 
+          : "bg-white hover:bg-gray-50 border-l-4 border-l-transparent"}`}
     >
-      <img src={avatar || 'https://via.placeholder.com/40'} alt={name} className="w-10 h-10 rounded-full mr-3" />
+      <div className="relative">
+        {(avatar_url || avatar_url) ? (
+          <motion.img 
+            whileHover={{ scale: 1.05 }}
+            transition={{ duration: 0.2 }}
+            src={avatar_url || avatar_url} 
+            alt={name} 
+            className="w-12 h-12 rounded-full mr-3 object-cover shadow-sm border border-gray-200" 
+          />
+        ) : (
+          getAvatarFallback(name)
+        )}
+        {chat.type === 'personal' && (
+          <span className="absolute bottom-0 right-2 w-3 h-3 bg-green-500 border-2 border-white rounded-full"></span>
+        )}
+      </div>
+      
       <div className="flex-1 min-w-0">
         <div className="flex justify-between items-center">
-          <p className="font-semibold text-gray-800 truncate">{name}</p>
-          {lastMessage && (
-            <p className="text-xs text-gray-500">
-              {new Date(lastMessage.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          <p className={`font-semibold ${isSelected ? 'text-indigo-900' : 'text-gray-800'} truncate`}>
+            {name}
+          </p>
+          {message && formattedTime && (
+            <p className={`text-xs ${isSelected ? 'text-indigo-700' : 'text-gray-500'} ml-2 whitespace-nowrap`}>
+              {formattedTime}
             </p>
           )}
         </div>
         <div className="flex justify-between items-center mt-1">
-          <p className="text-sm text-gray-600 truncate">
-            {lastMessage ? `${lastMessage.sender.name === "Me" ? "You: " : ""}${lastMessage.text}` : "No messages yet"}
+          <p className={`text-sm truncate ${isSelected ? 'text-indigo-800' : 'text-gray-600'}`}>
+            {messagePreview}
           </p>
-          {unreadCount && unreadCount > 0 && (
-            <span className="bg-blue-500 text-white text-xs font-bold rounded-full px-2 py-0.5">
-              {unreadCount}
-            </span>
-          )}
+          
+          <div className="ml-2 flex-shrink-0 flex items-center space-x-1">
+            {message?.sender?.id === "me" && (
+              <motion.span 
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                className={`text-xs ${('is_read' in message && message.is_read) || ('isRead' in message && (message as any).isRead) ? 'text-blue-500' : 'text-gray-400'}`}
+              >
+                {('is_read' in message ? (message as any).is_read : ('isRead' in message ? (message as any).isRead : undefined)) ? (
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                ) : (
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                )}
+              </motion.span>
+            )}
+            
+            {unread_count > 0 && (
+              <motion.span 
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ type: "spring", stiffness: 500, damping: 15 }}
+                className="flex items-center justify-center h-5 w-5 rounded-full bg-indigo-500 text-white text-xs font-bold"
+              >
+                {unread_count}
+              </motion.span>
+            )}
+          </div>
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 };
 
@@ -387,56 +808,408 @@ export default ChatList;
 </file>
 
 <file path="src/components/telegram/ChatView.tsx">
-import React, { useEffect, useRef } from 'react';
-import type { Chat, User } from '../../types/telegram';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { PaperAirplaneIcon, SparklesIcon, ArrowDownIcon } from '@heroicons/react/24/solid';
+import type { Chat, User, Message, MessagePaginationState } from '../../types/telegram';
 import MessageItem from './MessageItem';
+import AIAssistant from './AIAssistant';
+import { TelegramApiService } from '../../services/TelegramApiService';
 
 interface ChatViewProps {
   chat: Chat | null;
   currentUser: User; 
 }
 
+const DEFAULT_LIMIT = 15; // Changed from 20 to 15
+
 const ChatView: React.FC<ChatViewProps> = ({ chat, currentUser }) => {
+  const [message, setMessage] = useState<string>('');
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [showAIAssistant, setShowAIAssistant] = useState<boolean>(false);
   const messagesEndRef = useRef<null | HTMLDivElement>(null);
+  const messagesContainerRef = useRef<null | HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  
+  // Local state to hold updated messages for a better user experience
+  const [localMessages, setLocalMessages] = useState<Message[]>([]);
+  
+  // Pagination state for messages
+  const [messagePagination, setMessagePagination] = useState<MessagePaginationState>({
+    loading: false,
+    hasMore: true,
+    offset_id: 0,
+    limit: DEFAULT_LIMIT
+  });
+  
+  // Status indicators
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [showScrollToBottom, setShowScrollToBottom] = useState<boolean>(false);
+  const initialLoadScrollDoneRef = useRef(false); // Ref to track initial scroll
+
+  // Fetch initial messages when chat changes
+  useEffect(() => {
+    const fetchMessages = async () => {
+      if (!chat) return;
+      
+      initialLoadScrollDoneRef.current = false; // Reset scroll flag for new chat
+      try {
+        setIsLoading(true);
+        setLoadError(null);
+        setMessagePagination({
+          loading: true,
+          hasMore: true,
+          offset_id: 0,
+          limit: DEFAULT_LIMIT
+        });
+        
+        const response = await TelegramApiService.getMessages(String(chat.id), DEFAULT_LIMIT, 0);
+        const messages = response.messages; 
+        
+        // Deduplicate messages
+        const uniqueMessages = messages.filter((msg, index, self) => index === self.findIndex(t => t.id === msg.id));
+        setLocalMessages(uniqueMessages);
+
+        setMessagePagination(prev => ({
+          ...prev,
+          loading: false,
+          hasMore: uniqueMessages.length >= DEFAULT_LIMIT,
+          offset_id: uniqueMessages.length > 0 ? parseInt(uniqueMessages[uniqueMessages.length - 1].id) : 0
+        }));
+
+        if (uniqueMessages.length > 0 && !initialLoadScrollDoneRef.current) {
+          messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
+          initialLoadScrollDoneRef.current = true;
+        }
+      } catch (error) {
+        console.error('Failed to fetch messages:', error);
+        setLoadError('Failed to load messages');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    fetchMessages();
+  }, [chat]);
+
+  // Load more (older) messages
+  const loadMoreMessages = useCallback(async () => {
+    if (!chat || messagePagination.loading || !messagePagination.hasMore) return;
+    
+    try {
+      setMessagePagination(prev => ({ ...prev, loading: true }));
+      
+      const response = await TelegramApiService.loadMoreMessages(
+        String(chat.id), 
+        messagePagination.limit,
+        messagePagination.offset_id
+      );
+      
+      const messages = response.messages;
+      
+      // Deduplicate and prepend older messages
+      setLocalMessages(prevMessages => {
+        const combined = [...messages, ...prevMessages];
+        return combined.filter((msg, index, self) => index === self.findIndex(t => t.id === msg.id));
+      });
+      
+      // Update pagination state
+      setMessagePagination(prev => ({
+        ...prev,
+        loading: false,
+        hasMore: messages.length >= prev.limit,
+        offset_id: messages.length > 0 ? parseInt(messages[messages.length - 1].id) : prev.offset_id
+      }));
+      
+      // Preserve scroll position before adding new messages
+      const scrollContainer = messagesContainerRef.current;
+      const oldScrollHeight = scrollContainer?.scrollHeight || 0;
+      
+      // Restore scroll position to prevent jumping when new messages are added
+      if (scrollContainer) {
+        const newScrollHeight = scrollContainer.scrollHeight;
+        scrollContainer.scrollTop = newScrollHeight - oldScrollHeight;
+      }
+    } catch (error) {
+      console.error('Failed to load more messages:', error);
+      setMessagePagination(prev => ({ ...prev, loading: false }));
+    }
+  }, [chat, messagePagination.loading, messagePagination.hasMore, messagePagination.limit, messagePagination.offset_id]);
+
+  // Update local messages when chat changes
+  useEffect(() => {
+    if (chat) {
+      // Reset pagination when changing chats
+      setMessagePagination({
+        loading: false,
+        hasMore: true,
+        offset_id: 0,
+        limit: DEFAULT_LIMIT
+      });
+      // initialLoadScrollDoneRef is reset at the start of fetchMessages
+    }
+  }, [chat?.id]);
+
+  // Handle scroll events
+  const handleScroll = useCallback(() => {
+    const scrollContainer = messagesContainerRef.current;
+    if (!scrollContainer) return;
+    
+    // Check if user is scrolling near the top to load more messages
+    const isNearTop = scrollContainer.scrollTop < 100;
+    
+    if (isNearTop && !messagePagination.loading && messagePagination.hasMore) {
+      loadMoreMessages();
+    }
+    
+    // Show/hide scroll to bottom button
+    const isNearBottom = (
+      scrollContainer.scrollHeight - scrollContainer.scrollTop - scrollContainer.clientHeight
+    ) < 150;
+    
+    setShowScrollToBottom(!isNearBottom);
+  }, [loadMoreMessages, messagePagination.loading, messagePagination.hasMore]);
+
+  // Add scroll event listener
+  useEffect(() => {
+    const scrollContainer = messagesContainerRef.current;
+    if (scrollContainer) {
+      scrollContainer.addEventListener('scroll', handleScroll);
+      return () => scrollContainer.removeEventListener('scroll', handleScroll);
+    }
+  }, [handleScroll]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
+  // Focus input when chat changes
   useEffect(() => {
+    if (chat) {
+      inputRef.current?.focus();
+    }
+  }, [chat]);
+
+  const handleSendMessage = async () => {
+    if (!chat || !message.trim() || isSubmitting) return;
+    
+    setIsSubmitting(true);
+    
+    // Create a new message object for immediate UI update
+    const newMessage: Message = {
+      id: `temp-${Date.now()}`, // Temporary ID to be replaced after API response
+      sender: currentUser,
+      text: message.trim(),
+      timestamp: Date.now(),
+      isRead: true
+    };
+    
+    // Add to local messages for immediate UI update
+    setLocalMessages(prev => [...prev, newMessage]);
+    
+    // Reset input right away for better UX
+    setMessage('');
+    
+    // Scroll to bottom immediately
     scrollToBottom();
-  }, [chat?.messages]);
+    
+    try {
+      // Send message to API
+      await TelegramApiService.sendMessage(String(chat.id), message.trim());
+      
+      // In a real production app, you might want to refresh the chat to get the actual message with server-assigned ID
+      // For now, we'll keep the temporary message
+    } catch (error) {
+      console.error('Failed to send message:', error);
+      // Remove the temporary message if sending failed
+      setLocalMessages(prev => prev.filter(msg => msg.id !== newMessage.id));
+      // Show error and restore the message to input
+      setMessage(newMessage.text);
+      alert('Failed to send message. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage();
+    }
+  };
+
+  const toggleAIAssistant = () => {
+    setShowAIAssistant(prev => !prev);
+  };
 
   if (!chat) {
     return (
-      <div className="flex-1 flex items-center justify-center h-full bg-gray-50">
-        <p className="text-gray-500 text-lg">Select a chat to start messaging</p>
+      <div className="flex-1 flex flex-col items-center justify-center h-full bg-gray-50">
+        <div className="text-center">
+          <motion.div 
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ duration: 0.5 }}
+            className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-r from-indigo-400 to-purple-500 flex items-center justify-center shadow-md"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-white" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4.083-.98L2 17l1.338-3.123C2.493 12.767 2 11.434 2 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM7 9H5v2h2V9zm8 0h-2v2h2V9zM9 9h2v2H9V9z" clipRule="evenodd" />
+            </svg>
+          </motion.div>
+          <motion.p 
+            initial={{ y: 10, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ delay: 0.2 }}
+            className="text-gray-700 text-lg font-medium"
+          >
+            Select a chat to start messaging
+          </motion.p>
+          <motion.p 
+            initial={{ y: 10, opacity: 0 }}
+            animate={{ y: 0 }}
+            transition={{ delay: 0.3 }}
+            className="text-gray-500 mt-2 max-w-xs mx-auto"
+          >
+            Choose from your existing conversations or start a new one
+          </motion.p>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="flex-1 flex flex-col h-full bg-gray-50">
-      <header className="bg-white p-4 border-b border-gray-300 flex items-center">
-        <img src={chat.avatar || 'https://via.placeholder.com/40'} alt={chat.name} className="w-10 h-10 rounded-full mr-3" />
-        <div>
-          <h2 className="text-lg font-semibold text-gray-800">{chat.name}</h2>
-          <p className="text-xs text-gray-500">{chat.type}</p>
+      <header className="bg-white p-4 border-b border-gray-200 flex items-center justify-between shadow-sm">
+        <div className="flex items-center">
+          <motion.img 
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            src={chat.avatar_url || 'https://placehold.co/40'} 
+            alt={chat.name} 
+            className="w-10 h-10 rounded-full mr-3 border-2 border-gray-100" 
+          />
+          <div>
+            <h2 className="text-lg font-semibold text-gray-800">{chat.name}</h2>
+            <p className="text-xs text-gray-500">
+              {chat.type === 'personal' ? 'Direct Message' : 
+              chat.type === 'group' ? 'Group Chat' : 'Channel'}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center space-x-2">
+          <motion.button 
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={toggleAIAssistant}
+            className={`p-2 rounded-full transition-colors ${
+              showAIAssistant 
+              ? 'bg-indigo-100 text-indigo-700'
+              : 'hover:bg-gray-100 text-gray-500'
+            }`}
+            aria-label="AI Assistant"
+            title="AI Communication Assistant"
+          >
+            <SparklesIcon className="h-5 w-5" />
+          </motion.button>
         </div>
       </header>
-      <div className="flex-1 p-4 overflow-y-auto space-y-4">
-        {chat.messages.map((msg) => (
-          <MessageItem key={msg.id} message={msg} currentUser={currentUser} />
-        ))}
+
+      {/* Messages area */}
+      <div 
+        ref={messagesContainerRef}
+        className="flex-1 p-4 overflow-y-auto space-y-4 relative"
+      >
+        {isLoading && (
+          <div className="flex justify-center py-4">
+            <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-indigo-500"></div>
+          </div>
+        )}
+        
+        {messagePagination.loading && (
+          <div className="flex justify-center py-2">
+            <div className="animate-spin rounded-full h-6 w-6 border-t-2 border-b-2 border-indigo-500"></div>
+          </div>
+        )}
+        
+        {loadError && (
+          <div className="bg-red-50 p-3 rounded-md text-center text-red-500">
+            {loadError}
+            <button 
+              onClick={() => window.location.reload()} 
+              className="ml-2 text-red-600 underline"
+            >
+              Retry
+            </button>
+          </div>
+        )}
+
+        <AnimatePresence>
+          {localMessages.map((msg) => (
+            <MessageItem 
+              key={msg.id} 
+              message={msg} 
+              currentUser={currentUser} 
+              showMedia={true} 
+              chatId={String(chat.id)}
+            />
+          ))}
+        </AnimatePresence>
         <div ref={messagesEndRef} />
+        
+        {/* Scroll to bottom button */}
+        {showScrollToBottom && (
+          <motion.button
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 10 }}
+            className="absolute bottom-5 right-4 p-2 rounded-full bg-indigo-600 text-white shadow-lg"
+            onClick={scrollToBottom}
+          >
+            <ArrowDownIcon className="h-5 w-5" />
+          </motion.button>
+        )}
       </div>
-      <footer className="bg-white p-4 border-t border-gray-300">
-        <input 
-          type="text" 
-          placeholder="Type a message..." 
-          className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
-      </footer>
+
+      {/* AI Assistant Panel */}
+      <AnimatePresence>
+        {showAIAssistant && (
+          <AIAssistant chat={{...chat, messages: localMessages}} onClose={toggleAIAssistant} />
+        )}
+      </AnimatePresence>
+
+      {chat && chat.type !== 'channel' && ( // Conditionally render footer
+        <footer className="bg-white p-3 border-t border-gray-200">
+          <div className="flex items-center space-x-2">
+            <div className="flex-1 relative">
+              <input 
+                ref={inputRef}
+                type="text" 
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Type a message..." 
+                className="w-full p-3 pl-4 pr-12 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                disabled={isSubmitting}
+              />
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={handleSendMessage}
+                disabled={!message.trim() || isSubmitting}
+                className={`absolute right-2 top-1/2 transform -translate-y-1/2 rounded-full p-1.5 ${
+                  message.trim() && !isSubmitting
+                    ? 'bg-indigo-600 text-white hover:bg-indigo-700'
+                    : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                }`}
+                aria-label="Send message"
+              >
+                <PaperAirplaneIcon className="h-5 w-5" />
+              </motion.button>
+            </div>
+          </div>
+        </footer>
+      )}
     </div>
   );
 };
@@ -446,37 +1219,91 @@ export default ChatView;
 
 <file path="src/components/telegram/FilterTabs.tsx">
 import React from 'react';
+import { motion } from 'framer-motion';
 import type { ChatType } from '../../types/telegram';
+import { UserIcon, UsersIcon, MegaphoneIcon, InboxIcon } from '@heroicons/react/24/outline';
 
 interface FilterTabsProps {
   activeFilter: ChatType | "all";
   onFilterChange: (filter: ChatType | "all") => void;
+  stats?: {
+    total?: number;
+    personal_unread?: number;
+    group_unread?: number;
+    channel_unread?: number;
+  } | null;
+  isLoading?: boolean;
 }
 
-const filters: { label: string; value: ChatType | "all" }[] = [
-  { label: "All", value: "all" },
-  { label: "Personal", value: "personal" },
-  { label: "Groups", value: "group" },
-  { label: "Channels", value: "channel" },
-];
+const FilterTabs: React.FC<FilterTabsProps> = ({ activeFilter, onFilterChange, stats, isLoading = false }) => {
+  // Create filters with dynamic badges based on stats
+  const filters = [
+    { 
+      label: "All", 
+      value: "all" as ChatType | "all",
+      icon: <InboxIcon className="h-4 w-4" />,
+      unread_count: stats?.total || 0
+    },
+    { 
+      label: "Personal", 
+      value: "personal" as ChatType | "all",
+      icon: <UserIcon className="h-4 w-4" />,
+      unread_count: stats?.personal_unread || 0
+    },
+    { 
+      label: "Groups", 
+      value: "group" as ChatType | "all",
+      icon: <UsersIcon className="h-4 w-4" />,
+      unread_count: stats?.group_unread || 0
+    },
+    { 
+      label: "Channels", 
+      value: "channel" as ChatType | "all",
+      icon: <MegaphoneIcon className="h-4 w-4" />,
+      unread_count: stats?.channel_unread || 0
+    },
+  ];
 
-const FilterTabs: React.FC<FilterTabsProps> = ({ activeFilter, onFilterChange }) => {
   return (
-    <div className="mb-4 flex space-x-2 border-b border-gray-300">
-      {filters.map((filter) => (
-        <button
-          key={filter.value}
-          onClick={() => onFilterChange(filter.value)}
-          className={`py-2 px-4 font-medium text-sm 
-            ${activeFilter === filter.value 
-              ? "border-b-2 border-blue-500 text-blue-600"
-              : "text-gray-500 hover:text-gray-700"
-            }
-          `}
-        >
-          {filter.label}
-        </button>
-      ))}
+    <div className="px-2 overflow-x-auto flex border-b border-gray-200 bg-white sticky top-0 z-10">
+      <div className="flex space-x-2 pb-2 pt-2 w-full justify-between sm:justify-start">
+        {filters.map((filter) => (
+          <motion.button
+            key={filter.value}
+            onClick={() => onFilterChange(filter.value)}
+            className={`
+              py-1.5 px-3 rounded-full font-medium text-sm whitespace-nowrap flex-shrink-0
+              transition-all duration-200 ease-in-out flex items-center gap-1.5
+              ${isLoading ? "opacity-70 pointer-events-none" : ""}
+              ${activeFilter === filter.value 
+                ? "bg-gradient-to-r from-indigo-100 to-indigo-50 text-indigo-700 shadow-sm"
+                : "text-gray-500 hover:text-indigo-600 hover:bg-indigo-50"
+              }
+            `}
+            whileHover={{ scale: isLoading ? 1 : 1.03 }}
+            whileTap={{ scale: isLoading ? 1 : 0.97 }}
+            disabled={isLoading}
+          >
+            {filter.icon}
+            <span className="relative hidden xs:inline">
+              {filter.label}
+              {filter.unread_count > 0 && (
+                <span className="absolute -right-4 -top-1 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">
+                  {filter.unread_count > 9 ? '9+' : filter.unread_count}
+                </span>
+              )}
+              {activeFilter === filter.value && (
+                <motion.span
+                  layoutId="activeFilterIndicator"
+                  className="absolute -bottom-0.5 left-0 right-0 h-0.5 bg-indigo-500 rounded-full"
+                  initial={false}
+                  transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                />
+              )}
+            </span>
+          </motion.button>
+        ))}
+      </div>
     </div>
   );
 };
@@ -485,47 +1312,222 @@ export default FilterTabs;
 </file>
 
 <file path="src/components/telegram/MessageItem.tsx">
-import React from 'react';
+import React, { useState } from 'react';
+import { motion } from 'framer-motion';
+import { PlayIcon, DocumentIcon, PhotoIcon } from '@heroicons/react/24/solid';
 import type { Message, User } from '../../types/telegram';
+import { TelegramApiService } from '../../services/TelegramApiService';
 
 interface MessageItemProps {
   message: Message;
-  currentUser: User; 
+  currentUser: User;
+  showMedia?: boolean;
+  chatId?: string;
 }
 
-const MessageItem: React.FC<MessageItemProps> = ({ message, currentUser }) => {
+const MessageItem: React.FC<MessageItemProps> = ({ message, currentUser, showMedia = true, chatId }) => {
+  const [mediaLoaded, setMediaLoaded] = useState(false);
+  const [mediaError, setMediaError] = useState(false);
+  
   const isMyMessage = message.sender.id === currentUser.id;
+  
+  const formattedTime = new Date(message.timestamp).toLocaleTimeString([], { 
+    hour: '2-digit', 
+    minute: '2-digit'
+  });
+  
+  // Format date if message is from a different day
+  const formattedDate = new Date(message.timestamp).toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric'
+  });
+  
+  // Check if message is recent (within the last 24 hours)
+  const isRecent = Date.now() - message.timestamp < 24 * 60 * 60 * 1000;
+
+  // Format duration for voice messages
+  const formatDuration = (seconds: number) => {
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = Math.floor(seconds % 60);
+    return `${minutes}:${remainingSeconds < 10 ? '0' : ''}${remainingSeconds}`;
+  };
+
+  // Handle media loading
+  const handleMediaLoad = () => {
+    setMediaLoaded(true);
+  };
+
+  const handleMediaError = () => {
+    setMediaError(true);
+  };
+
+  // Render media content based on type
+  const renderMediaContent = () => {
+    if (!showMedia || !message.mediaType || !message.mediaUrl || !chatId) return null;
+
+    const mediaUrl = message.mediaUrl.startsWith('http') 
+      ? message.mediaUrl 
+      : TelegramApiService.getMediaUrl(chatId, message.id);
+
+    switch (message.mediaType) {
+      case 'photo':
+        return (
+          <div className="mt-2 rounded-lg overflow-hidden relative">
+            {!mediaLoaded && !mediaError && (
+              <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
+                <div className="animate-pulse flex space-x-2">
+                  <div className="h-3 w-3 bg-indigo-400 rounded-full"></div>
+                  <div className="h-3 w-3 bg-indigo-400 rounded-full"></div>
+                  <div className="h-3 w-3 bg-indigo-400 rounded-full"></div>
+                </div>
+              </div>
+            )}
+            {mediaError ? (
+              <div className="bg-gray-100 p-4 rounded-lg flex items-center justify-center">
+                <PhotoIcon className="h-12 w-12 text-gray-400" />
+                <span className="ml-2 text-sm text-gray-500">Unable to load image</span>
+              </div>
+            ) : (
+              <img 
+                src={mediaUrl} 
+                alt="Photo" 
+                className={`rounded-lg max-w-full max-h-60 object-contain ${!mediaLoaded ? 'h-40 bg-gray-100' : ''}`}
+                onLoad={handleMediaLoad}
+                onError={handleMediaError}
+              />
+            )}
+          </div>
+        );
+
+      case 'sticker':
+        return (
+          <div className="mt-2 max-w-[128px] max-h-[128px]">
+            {!mediaLoaded && !mediaError && (
+              <div className="w-32 h-32 flex items-center justify-center bg-gray-100 rounded-lg">
+                <div className="animate-pulse flex space-x-2">
+                  <div className="h-3 w-3 bg-indigo-400 rounded-full"></div>
+                  <div className="h-3 w-3 bg-indigo-400 rounded-full"></div>
+                  <div className="h-3 w-3 bg-indigo-400 rounded-full"></div>
+                </div>
+              </div>
+            )}
+            {mediaError ? (
+              <div className="w-32 h-32 bg-gray-100 rounded-lg flex items-center justify-center">
+                <span className="text-sm text-gray-500">Sticker</span>
+              </div>
+            ) : (
+              <img 
+                src={mediaUrl} 
+                alt="Sticker" 
+                className={`object-contain ${!mediaLoaded ? 'invisible' : ''}`}
+                onLoad={handleMediaLoad}
+                onError={handleMediaError}
+              />
+            )}
+          </div>
+        );
+
+      case 'voice':
+        return (
+          <div className="mt-2 flex items-center space-x-2 bg-gray-100 rounded-lg p-2 w-56">
+            <PlayIcon className="h-6 w-6 text-indigo-600" />
+            <div className="flex-1">
+              <div className="h-1 bg-indigo-200 rounded">
+                <div className="h-full w-0 bg-indigo-600 rounded"></div>
+              </div>
+            </div>
+            <span className="text-xs text-gray-500">
+              {message.duration ? formatDuration(message.duration) : '0:00'}
+            </span>
+          </div>
+        );
+
+      case 'document':
+        return (
+          <div className="mt-2 flex items-center bg-gray-100 rounded-lg p-3">
+            <DocumentIcon className="h-8 w-8 text-indigo-600 mr-2" />
+            <div>
+              <p className="text-sm font-medium">Document</p>
+              <p className="text-xs text-gray-500">Tap to download</p>
+            </div>
+          </div>
+        );
+
+      default:
+        return null;
+    }
+  };
 
   return (
-    <div className={`flex mb-3 ${isMyMessage ? 'justify-end' : 'justify-start'}`}>
+    <motion.div 
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ type: "spring", stiffness: 500, damping: 30 }}
+      className={`flex mb-4 px-1 ${isMyMessage ? 'justify-end' : 'justify-start'}`}
+    >
       {!isMyMessage && (
-        <img 
-          src={message.sender.avatar || 'https://via.placeholder.com/32'} 
-          alt={message.sender.name} 
-          className="w-8 h-8 rounded-full mr-2 self-end"
-        />
+        <div className="mr-2 hidden sm:block self-end">
+          <motion.img 
+            initial={{ scale: 0.8 }}
+            animate={{ scale: 1 }}
+            whileHover={{ scale: 1.1 }}
+            src={message.sender.avatar_url || 'https://via.placeholder.com/32'} 
+            alt={message.sender.name} 
+            className="w-8 h-8 rounded-full border border-gray-200 shadow-sm"
+          />
+        </div>
       )}
-      <div 
-        className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg shadow 
+      <motion.div 
+        whileHover={{ scale: 1.01 }}
+        className={`max-w-xs sm:max-w-sm md:max-w-md px-4 py-3 rounded-2xl shadow-sm 
           ${isMyMessage 
-            ? 'bg-blue-500 text-white' 
-            : 'bg-gray-200 text-gray-800'
+            ? 'bg-gradient-to-r from-indigo-500 to-indigo-600 text-white rounded-br-none' 
+            : 'bg-white text-gray-800 border border-gray-200 rounded-bl-none'
           }`}
       >
-        {!isMyMessage && <p className="text-xs font-semibold mb-1">{message.sender.name}</p>}
-        <p className="text-sm">{message.text}</p>
-        <p className={`text-xs mt-1 ${isMyMessage ? 'text-blue-200' : 'text-gray-500'} text-right`}>
-          {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-        </p>
-      </div>
+        {!isMyMessage && (
+          <div className="flex items-center space-x-1 mb-1.5">
+            <span className="text-xs font-semibold text-gray-700">{message.sender.name}</span>
+            <span className="text-xs text-gray-400">•</span>
+            <span className="text-xs text-gray-400">{isRecent ? formattedTime : formattedDate}</span>
+          </div>
+        )}
+        
+        {message.text && (
+          <p className="text-sm whitespace-pre-wrap break-words">{message.text}</p>
+        )}
+        
+        {renderMediaContent()}
+        
+        {isMyMessage && (
+          <div className="flex items-center justify-end mt-1 space-x-1">
+            <span className={`text-xs ${isMyMessage ? 'text-indigo-200' : 'text-gray-400'}`}>
+              {isRecent ? formattedTime : formattedDate}
+            </span>
+            {message.isRead && (
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" 
+                className="w-3 h-3 text-indigo-200"
+                aria-label="Read"
+              >
+                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+              </svg>
+            )}
+          </div>
+        )}
+      </motion.div>
       {isMyMessage && (
-         <img 
-          src={currentUser.avatar || 'https://via.placeholder.com/32'} 
-          alt={currentUser.name} 
-          className="w-8 h-8 rounded-full ml-2 self-end"
-        />
+         <div className="ml-2 hidden sm:block self-end">
+           <motion.img 
+            initial={{ scale: 0.8 }}
+            animate={{ scale: 1 }}
+            whileHover={{ scale: 1.1 }}
+            src={currentUser.avatar_url || 'https://via.placeholder.com/32'} 
+            alt={currentUser.name} 
+            className="w-8 h-8 rounded-full border border-gray-200 shadow-sm"
+          />
+         </div>
       )}
-    </div>
+    </motion.div>
   );
 };
 
@@ -536,10 +1538,10 @@ export default MessageItem;
 import type { Chat, User, Message } from '../types/telegram';
 
 const mockUsers: Record<string, User> = {
-  u1: { id: "u1", name: "Alice", avatar: "https://i.pravatar.cc/150?u=alice" },
-  u2: { id: "u2", name: "Bob", avatar: "https://i.pravatar.cc/150?u=bob" },
-  u3: { id: "u3", name: "Charlie", avatar: "https://i.pravatar.cc/150?u=charlie" },
-  me: { id: "me", name: "Me", avatar: "https://i.pravatar.cc/150?u=me" },
+  u1: { id: "u1", name: "Alice", avatar_url: "https://i.pravatar.cc/150?u=alice" },
+  u2: { id: "u2", name: "Bob", avatar_url: "https://i.pravatar.cc/150?u=bob" },
+  u3: { id: "u3", name: "Charlie", avatar_url: "https://i.pravatar.cc/150?u=charlie" },
+  me: { id: "me", name: "Me", avatar_url: "https://i.pravatar.cc/150?u=me" },
 };
 
 const mockMessages: Record<string, Message[]> = {
@@ -566,36 +1568,36 @@ export const mockChats: Chat[] = [
     id: "chat1",
     type: "personal",
     name: "Alice",
-    avatar: mockUsers.u1.avatar,
-    lastMessage: mockMessages.chat1[mockMessages.chat1.length - 1],
-    unreadCount: 2,
+    avatar_url: mockUsers.u1.avatar_url,
+    last_message: mockMessages.chat1[mockMessages.chat1.length - 1],
+    unread_count: 2,
     messages: mockMessages.chat1,
   },
   {
     id: "chat2",
     type: "group",
     name: "Project Team",
-    avatar: "https://i.pravatar.cc/150?u=group1",
-    lastMessage: mockMessages.chat2[mockMessages.chat2.length - 1],
-    unreadCount: 0,
+    avatar_url: "https://i.pravatar.cc/150?u=group1",
+    last_message: mockMessages.chat2[mockMessages.chat2.length - 1],
+    unread_count: 0,
     messages: mockMessages.chat2,
   },
   {
     id: "chat3",
     type: "channel",
     name: "Tech News",
-    avatar: "https://i.pravatar.cc/150?u=channel1",
-    lastMessage: mockMessages.chat3[mockMessages.chat3.length - 1],
-    unreadCount: 1,
+    avatar_url: "https://i.pravatar.cc/150?u=channel1",
+    last_message: mockMessages.chat3[mockMessages.chat3.length - 1],
+    unread_count: 1,
     messages: mockMessages.chat3,
   },
   {
     id: "chat4",
     type: "personal",
     name: "Bob",
-    avatar: mockUsers.u2.avatar,
-    lastMessage: mockMessages.chat4[mockMessages.chat4.length - 1],
-    unreadCount: 1,
+    avatar_url: mockUsers.u2.avatar_url,
+    last_message: mockMessages.chat4[mockMessages.chat4.length - 1],
+    unread_count: 1,
     messages: mockMessages.chat4,
   },
 ];
@@ -604,13 +1606,29 @@ export const mockChats: Chat[] = [
 <file path="src/index.css">
 @import "tailwindcss";
 
+:root {
+  --primary: #4f46e5;
+  --primary-light: #6366f1;
+  --primary-dark: #4338ca;
+  --secondary: #10b981;
+  --accent: #8b5cf6;
+  --background: #f9fafb;
+  --surface: #ffffff;
+  --error: #ef4444;
+  --text-primary: #111827;
+  --text-secondary: #4b5563;
+  --text-tertiary: #9ca3af;
+}
+
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
     'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  background-color: #f9fafb;
+  color: var(--text-primary);
 }
 
 code {
@@ -620,21 +1638,103 @@ code {
 
 /* Custom scrollbar for webkit browsers */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #f1f1f1;
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #888;
-  border-radius: 4px;
+  background: #cbd5e1;
+  border-radius: 10px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #555;
+  background: #94a3b8;
+}
+
+/* Animation classes */
+.fade-in {
+  animation: fadeIn 0.5s ease-in-out forwards;
+}
+
+.slide-in {
+  animation: slideIn 0.3s ease-in-out forwards;
+}
+
+.scale-in {
+  animation: scaleIn 0.3s ease-in-out forwards;
+}
+
+/* Glass effect */
+.glass {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.dark-glass {
+  background: rgba(31, 41, 55, 0.8);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(31, 41, 55, 0.18);
+}
+
+/* Button animations */
+.button-hover {
+  transition: all 0.3s ease;
+}
+
+.button-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+}
+
+.button-active {
+  transform: scale(0.98);
+}
+
+/* Shadow effects */
+.hover-shadow {
+  transition: box-shadow 0.3s ease;
+}
+
+.hover-shadow:hover {
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    transform: scale(0.8);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 </file>
 
@@ -652,56 +1752,466 @@ createRoot(document.getElementById('root')!).render(
 </file>
 
 <file path="src/pages/TelegramPage.tsx">
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import FilterTabs from '../components/telegram/FilterTabs';
 import ChatList from '../components/telegram/ChatList';
 import ChatView from '../components/telegram/ChatView';
-import { mockChats } from '../data/mockTelegramData';
-import type { ChatType, User } from '../types/telegram';
+import { TelegramApiService } from '../services/TelegramApiService';
+import type { ChatType, User, Chat, PaginationState } from '../types/telegram';
+import { ArrowLeftIcon, MagnifyingGlassIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
-const currentUser: User = { id: "me", name: "Me", avatar: "https://i.pravatar.cc/150?u=me" };
+// Current user is hardcoded for now, in a real app would come from authentication
+const currentUser: User = { id: "me", name: "Me", avatar_url: "https://i.pravatar.cc/150?u=me" };
 
-const TelegramPage: React.FC = () => {
+// Initial pagination settings
+const DEFAULT_LIMIT = 20;
+
+interface TelegramPageProps {
+  // Add prop for stats callback
+  onStatsUpdate?: (stats: any) => void;
+}
+
+const TelegramPage: React.FC<TelegramPageProps> = ({ onStatsUpdate }) => {
   const [activeFilter, setActiveFilter] = useState<ChatType | "all">("all");
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [isMobileView, setIsMobileView] = useState<boolean>(false);
+  const [showChatList, setShowChatList] = useState<boolean>(true);
+  
+  // State for storing data from API
+  const [chats, setChats] = useState<Chat[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+  const [stats, setStats] = useState<{
+    personal_unread: number;
+    group_unread: number;
+    channel_unread: number;
+    total?: number;
+  } | null>(null);
+  
+  // Pagination state
+  const [pagination, setPagination] = useState<PaginationState>({
+    loading: false,
+    hasMore: true,
+    offset: 0,
+    limit: DEFAULT_LIMIT
+  });
 
-  const filteredChats = useMemo(() => {
-    if (activeFilter === "all") {
-      return mockChats;
+  // Ref for chat list container to handle scroll events
+  const chatListRef = useRef<HTMLDivElement>(null);
+  
+  // Update parent component when stats change
+  useEffect(() => {
+    if (stats && onStatsUpdate) {
+      onStatsUpdate(stats);
     }
-    return mockChats.filter(chat => chat.type === activeFilter);
-  }, [activeFilter]);
+  }, [stats, onStatsUpdate]);
 
+  // Fetch chats from the API
+  const fetchChats = useCallback(async (reset: boolean = true) => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      // If resetting, we want to fetch from the beginning
+      if (reset) {
+        setPagination(prev => ({ ...prev, offset: 0, hasMore: true }));
+      }
+      
+      const response = await TelegramApiService.getChats(activeFilter, pagination.limit);
+      
+      // Convert backend chat format to frontend format
+      const chatList = response.chats.map(chat => TelegramApiService.convertToClientChat(chat));
+      
+      setChats(chatList);
+      
+      // Calculate total unread messages
+      const total = (response.stats.personal_unread || 0) + 
+                   (response.stats.group_unread || 0) + 
+                   (response.stats.channel_unread || 0);
+
+      setStats({
+        ...response.stats,
+        total
+      });
+      
+      // Update pagination state
+      setPagination(prev => ({
+        ...prev,
+        hasMore: chatList.length === prev.limit,
+        offset: chatList.length
+      }));
+    } catch (err) {
+      console.error('Failed to fetch chats:', err);
+      setError('Failed to load chats. Please try again later.');
+    } finally {
+      setLoading(false);
+    }
+  }, [activeFilter, pagination.limit]);
+
+  // Function to load more chats (pagination)
+  const loadMoreChats = useCallback(async () => {
+    if (pagination.loading || !pagination.hasMore) return;
+
+    try {
+      setPagination(prev => ({ ...prev, loading: true }));
+      
+      const response = await TelegramApiService.loadMoreChats(
+        activeFilter, 
+        pagination.limit,
+        pagination.offset
+      );
+
+      // Convert backend chat format to frontend format
+      const chatList = response.chats.map(chat => TelegramApiService.convertToClientChat(chat));
+
+      // If we got fewer items than requested, we've reached the end
+      const hasMore = chatList.length === pagination.limit;
+      
+      // Append new chats to existing chats
+      setChats(prevChats => [...prevChats, ...chatList]);
+      
+      // Update stats if they changed
+      if (response.stats) {
+        const total = (response.stats.personal_unread || 0) + 
+                     (response.stats.group_unread || 0) + 
+                     (response.stats.channel_unread || 0);
+
+        setStats({
+          ...response.stats,
+          total
+        });
+      }
+      
+      // Update pagination state
+      setPagination(prev => ({
+        ...prev,
+        loading: false,
+        hasMore,
+        offset: prev.offset + chatList.length
+      }));
+    } catch (err) {
+      console.error('Failed to load more chats:', err);
+      setPagination(prev => ({ ...prev, loading: false }));
+    }
+  }, [activeFilter, pagination.hasMore, pagination.limit, pagination.loading, pagination.offset]);
+
+  // Load chats when component mounts or filter changes
+  useEffect(() => {
+    fetchChats(true);
+  }, [fetchChats, activeFilter]);
+
+  // Handle scroll events for infinite scrolling
+  const handleScroll = useCallback(() => {
+    if (!chatListRef.current || pagination.loading) return;
+    
+    const { scrollTop, scrollHeight, clientHeight } = chatListRef.current;
+    const scrolledToBottom = (scrollHeight - scrollTop - clientHeight) < 100;
+    
+    if (scrolledToBottom && pagination.hasMore) {
+      loadMoreChats();
+    }
+  }, [loadMoreChats, pagination.hasMore, pagination.loading]);
+
+  // Add scroll event listener
+  useEffect(() => {
+    const chatListElement = chatListRef.current;
+    if (chatListElement) {
+      chatListElement.addEventListener('scroll', handleScroll);
+      return () => chatListElement.removeEventListener('scroll', handleScroll);
+    }
+  }, [handleScroll]);
+
+  // Check if we're in mobile view
+  useEffect(() => {
+    const checkMobileView = () => {
+      setIsMobileView(window.innerWidth < 768);
+    };
+    
+    // Initial check
+    checkMobileView();
+    
+    // Add event listener
+    window.addEventListener('resize', checkMobileView);
+    
+    // Clean up
+    return () => window.removeEventListener('resize', checkMobileView);
+  }, []);
+
+  // Ensure correct view is shown on mobile when a chat is selected
+  useEffect(() => {
+    if (isMobileView && selectedChatId) {
+      setShowChatList(false);
+    }
+  }, [selectedChatId, isMobileView]);
+
+  // Filter and search chats
+  const filteredChats = useMemo(() => {
+    if (!chats || chats.length === 0) return [];
+    
+    // Search is applied after API filtering
+    if (!searchQuery.trim()) return chats;
+    
+    const query = searchQuery.toLowerCase();
+    return chats.filter(chat => 
+      chat.name.toLowerCase().includes(query)
+    );
+  }, [chats, searchQuery]);
+
+  // Get the selected chat
   const selectedChat = useMemo(() => {
-    return mockChats.find(chat => chat.id === selectedChatId) || null;
-  }, [selectedChatId]);
+    return chats.find(chat => chat.id === selectedChatId) || null;
+  }, [selectedChatId, chats]);
 
   const handleSelectChat = (chatId: string) => {
     setSelectedChatId(chatId);
   };
 
+  const handleBackToList = () => {
+    setShowChatList(true);
+  };
+
+  const clearSearch = () => {
+    setSearchQuery('');
+  };
+
+  const handleFilterChange = (filter: ChatType | "all") => {
+    setActiveFilter(filter);
+    setSelectedChatId(null);
+    setShowChatList(true);
+    // Fetch will be triggered by the useEffect that depends on activeFilter
+  };
+
+  // Handle refresh button
+  const handleRefresh = () => {
+    fetchChats(true);
+  };
+
   return (
-    <div className="flex h-full shadow-lg rounded-lg overflow-hidden">
-      <div className="w-1/3 min-w-[300px] max-w-[400px] flex flex-col border-r border-gray-300 bg-white">
-        <div className="p-4 border-b border-gray-300">
-            <input 
-                type="text" 
-                placeholder="Search chats..." 
-                className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+    <div className="flex flex-col h-full overflow-hidden bg-gray-100 rounded-xl shadow-xl">
+      {/* Mobile view with selected chat */}
+      {isMobileView ? (
+        <AnimatePresence mode="wait" initial={false}>
+          {showChatList ? (
+            <motion.div 
+              key="chatlist"
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              transition={{ duration: 0.2 }}
+              className="flex flex-col h-full"
+            >
+              <div className="flex-none bg-white border-b border-gray-200 p-4 flex justify-between items-center">
+                <h1 className="text-2xl font-bold text-gray-800">Messages</h1>
+                <button 
+                  onClick={handleRefresh} 
+                  className="p-1 rounded-full hover:bg-gray-100 text-gray-600"
+                  disabled={loading}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 ${loading ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                </button>
+              </div>
+              <div className="flex-none p-3 bg-white">
+                <div className="relative">
+                  <input 
+                    type="text" 
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search messages..." 
+                    className="w-full p-2 pl-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-gray-50"
+                  />
+                  <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                  {searchQuery && (
+                    <button 
+                      onClick={clearSearch}
+                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      <XMarkIcon className="h-5 w-5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+              <FilterTabs 
+                activeFilter={activeFilter} 
+                onFilterChange={handleFilterChange} 
+                stats={stats} 
+                isLoading={loading} 
+              />
+              <div 
+                ref={chatListRef}
+                className="flex-1 overflow-y-auto"
+              >
+                {loading && !chats.length ? (
+                  <div className="flex justify-center items-center h-full">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-700"></div>
+                  </div>
+                ) : error ? (
+                  <div className="p-4 text-center">
+                    <p className="text-red-500">{error}</p>
+                    <button 
+                      onClick={handleRefresh} 
+                      className="mt-2 px-4 py-2 bg-indigo-500 text-white rounded-md hover:bg-indigo-600"
+                    >
+                      Try Again
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <ChatList 
+                      chats={filteredChats} 
+                      selectedChatId={selectedChatId} 
+                      onSelectChat={handleSelectChat} 
+                    />
+                    {pagination.loading && (
+                      <div className="flex justify-center py-4">
+                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-700"></div>
+                      </div>
+                    )}
+                    {filteredChats.length === 0 && !pagination.loading && (
+                      <div className="p-6 text-center">
+                        <p className="text-gray-500">No conversations found</p>
+                        {searchQuery && (
+                          <button 
+                            onClick={clearSearch}
+                            className="mt-2 text-indigo-600 font-medium hover:text-indigo-700"
+                          >
+                            Clear search
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </motion.div>
+          ) : (
+            <motion.div 
+              key="chatview"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 20 }}
+              transition={{ duration: 0.2 }}
+              className="flex flex-col h-full relative"
+            >
+              {selectedChat && (
+                <button 
+                  onClick={handleBackToList}
+                  className="absolute left-4 top-4 p-1 rounded-full bg-gray-100 z-20 shadow-sm"
+                >
+                  <ArrowLeftIcon className="h-6 w-6 text-gray-700" />
+                </button>
+              )}
+              <ChatView chat={selectedChat} currentUser={currentUser} />
+            </motion.div>
+          )}
+        </AnimatePresence>
+      ) : (
+        // Desktop view with split panel
+        <div className="flex h-full overflow-hidden">
+          <motion.div 
+            initial={{ x: -50, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            transition={{ duration: 0.3 }}
+            className="w-1/3 min-w-[300px] max-w-[400px] flex flex-col border-r border-gray-200 bg-white shadow-md"
+          >
+            <div className="flex-none p-4 border-b border-gray-200 flex justify-between items-center">
+              <h1 className="text-xl font-semibold text-gray-800">Messages</h1>
+              <button 
+                onClick={handleRefresh} 
+                className="p-1 rounded-full hover:bg-gray-100 text-gray-600"
+                disabled={loading}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 ${loading ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              </button>
+            </div>
+            <div className="flex-none p-3 border-b border-gray-200">
+              <div className="relative">
+                <input 
+                  type="text" 
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search messages..." 
+                  className="w-full p-2 pl-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-gray-50"
+                />
+                <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                {searchQuery && (
+                  <button 
+                    onClick={clearSearch}
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    <XMarkIcon className="h-5 w-5" />
+                  </button>
+                )}
+              </div>
+            </div>
+            <FilterTabs 
+              activeFilter={activeFilter} 
+              onFilterChange={handleFilterChange} 
+              stats={stats} 
+              isLoading={loading} 
             />
+            <div 
+              ref={chatListRef}
+              className="flex-1 overflow-y-auto"
+            >
+              {loading && !chats.length ? (
+                <div className="flex justify-center items-center h-32">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-700"></div>
+                </div>
+              ) : error ? (
+                <div className="p-6 text-center">
+                  <p className="text-red-500">{error}</p>
+                  <button 
+                    onClick={handleRefresh} 
+                    className="mt-2 px-4 py-2 bg-indigo-500 text-white rounded-md hover:bg-indigo-600"
+                  >
+                    Try Again
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <ChatList 
+                    chats={filteredChats} 
+                    selectedChatId={selectedChatId} 
+                    onSelectChat={handleSelectChat} 
+                  />
+                  {pagination.loading && (
+                    <div className="flex justify-center py-4">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-700"></div>
+                    </div>
+                  )}
+                  {filteredChats.length === 0 && !pagination.loading && (
+                    <div className="p-6 text-center">
+                      <p className="text-gray-500">No matching conversations found</p>
+                      {searchQuery && (
+                        <button 
+                          onClick={clearSearch}
+                          className="mt-2 text-indigo-600 font-medium hover:text-indigo-700"
+                        >
+                          Clear search
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </motion.div>
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.3, delay: 0.1 }}
+            className="flex-1"
+          >
+            <ChatView chat={selectedChat} currentUser={currentUser} />
+          </motion.div>
         </div>
-        <FilterTabs activeFilter={activeFilter} onFilterChange={setActiveFilter} />
-        <div className="flex-1 overflow-y-auto">
-            <ChatList 
-                chats={filteredChats} 
-                selectedChatId={selectedChatId} 
-                onSelectChat={handleSelectChat} 
-            />
-        </div>
-      </div>
-      <div className="flex-1 flex flex-col">
-        <ChatView chat={selectedChat} currentUser={currentUser} />
-      </div>
+      )}
     </div>
   );
 };
@@ -709,11 +2219,367 @@ const TelegramPage: React.FC = () => {
 export default TelegramPage;
 </file>
 
+<file path="src/services/AIAgentService.ts">
+import type { Chat, Message } from '../types/telegram';
+
+export type AIAnalysisType = 
+  | 'sentiment' 
+  | 'summary' 
+  | 'suggestions'
+  | 'draft' 
+  | 'translate' 
+  | 'insights';
+
+interface AIResponse {
+  content: string;
+  type: AIAnalysisType;
+  timestamp: number;
+}
+
+/**
+ * Analyzes conversation based on requested analysis type
+ * @param chat The chat to analyze
+ * @param type Type of analysis to perform
+ * @returns Promise with analysis result
+ */
+export async function analyzeConversation(chat: Chat, type: AIAnalysisType): Promise<string> {
+  if (!chat || !chat.messages || chat.messages.length === 0) {
+    return "No messages to analyze";
+  }
+  
+  try {
+    let response: AIResponse;
+    
+    switch (type) {
+      case 'sentiment':
+        response = await AIAgentService.analyzeSentiment(chat.messages);
+        break;
+      case 'summary':
+        response = await AIAgentService.summarizeConversation(chat.messages);
+        break;
+      case 'suggestions':
+        response = await AIAgentService.draftResponse(chat.messages);
+        break;
+      case 'insights':
+        response = await AIAgentService.getConversationInsights(chat);
+        break;
+      case 'translate':
+        response = await AIAgentService.translateMessages(chat.messages);
+        break;
+      default:
+        response = await AIAgentService.summarizeConversation(chat.messages);
+    }
+    
+    return response.content;
+  } catch (error) {
+    console.error("Error analyzing conversation:", error);
+    return "An error occurred while analyzing the conversation. Please try again later.";
+  }
+}
+
+// AI Agent service for analyzing and managing conversations
+export class AIAgentService {
+  
+  /**
+   * Analyzes sentiment of the conversation
+   * @param _messages List of messages to analyze
+   * @returns Promise with sentiment analysis
+   */
+  static async analyzeSentiment(_messages: Message[]): Promise<AIResponse> {
+    // In a real app, this would call an API
+    // For now, we'll simulate a response
+    await this.simulateApiDelay();
+
+    const sentiments = ['positive', 'neutral', 'slightly negative', 'mixed', 'very positive', 'professional'];
+    const randomSentiment = sentiments[Math.floor(Math.random() * sentiments.length)];
+    
+    return {
+      content: `The overall tone of this conversation appears to be ${randomSentiment}. The participants seem to be engaged in a constructive dialogue with clear communication patterns.`,
+      type: 'sentiment',
+      timestamp: Date.now()
+    };
+  }
+
+  /**
+   * Summarizes the conversation
+   * @param messages List of messages to summarize
+   * @returns Promise with conversation summary
+   */
+  static async summarizeConversation(messages: Message[]): Promise<AIResponse> {
+    // Simulate API call
+    await this.simulateApiDelay();
+
+    // Extract names for a more realistic summary
+    const participants = new Set<string>();
+    messages.forEach(msg => participants.add(msg.sender.name));
+    
+    return {
+      content: `This conversation between ${Array.from(participants).join(', ')} involves ${messages.length} messages discussing project details, scheduling, and next steps. Key points include meeting times, task assignments, and upcoming deadlines.`,
+      type: 'summary',
+      timestamp: Date.now()
+    };
+  }
+
+  /**
+   * Draft a response based on conversation context
+   * @param messages List of messages for context
+   * @returns Promise with drafted response
+   */
+  static async draftResponse(messages: Message[]): Promise<AIResponse> {
+    await this.simulateApiDelay();
+    
+    // Get the most recent message for context
+    const last_message = messages[messages.length - 1];
+    
+    let draftedResponse = "I've reviewed the information and I'm available to meet tomorrow. Let me know what time works best for you, and I'll make sure to prepare the reports you requested.";
+    
+    if (last_message.text.toLowerCase().includes('meeting')) {
+      draftedResponse = "Yes, I can make the meeting tomorrow. What time would work best for you? I'll prepare the necessary materials.";
+    } else if (last_message.text.toLowerCase().includes('help')) {
+      draftedResponse = "I'd be happy to help with that. Could you provide a bit more information about what you need specifically?";
+    }
+
+    return {
+      content: draftedResponse,
+      type: 'draft',
+      timestamp: Date.now()
+    };
+  }
+  
+  /**
+   * Translate messages to another language
+   * @param _messages List of messages to translate
+   * @returns Promise with translated content
+   */
+  static async translateMessages(_messages: Message[]): Promise<AIResponse> {
+    await this.simulateApiDelay();
+    
+    return {
+      content: "All messages have been translated to English. I've preserved the original meaning and context as accurately as possible.",
+      type: 'translate',
+      timestamp: Date.now()
+    };
+  }
+
+  /**
+   * Provide deeper insights about the conversation
+   * @param chat The chat to analyze
+   * @returns Promise with conversation insights
+   */
+  static async getConversationInsights(chat: Chat): Promise<AIResponse> {
+    await this.simulateApiDelay();
+    
+    return {
+      content: `Based on my analysis of this ${chat.messages.length}-message conversation:
+      
+1. **Communication patterns**: Messages are typically exchanged within 5-10 minute intervals
+2. **Topic trends**: The conversation primarily focuses on project planning and coordination
+3. **Key entities mentioned**: Project Alpha, Q3 deliverables, client meeting
+4. **Action items**: Schedule follow-up meeting, prepare presentation, contact vendors
+5. **Sentiment trend**: Started formal, becoming more casual and collaborative over time`,
+      type: 'insights',
+      timestamp: Date.now()
+    };
+  }
+
+  /**
+   * Helper function to simulate API delay
+   */
+  private static async simulateApiDelay(): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, 1500));
+  }
+}
+</file>
+
+<file path="src/services/TelegramApiService.ts">
+import type { Chat, Message, ChatType, MessageFromAPI } from '../types/telegram';
+
+const API_BASE_URL = 'http://localhost:8000';
+const DEFAULT_MESSAGE_LIMIT = 15; // Added constant for message limit
+
+interface ChatsResponse {
+  chats: Chat[];
+  stats: {
+    total: number;
+    personal_unread: number;
+    group_unread: number;
+    channel_unread: number;
+  };
+}
+
+interface MessagesResponse {
+  messages: Message[];
+}
+
+export class TelegramApiService {
+  /**
+   * Convert API message format to client-side format
+   */
+  static convertToClientMessage(message: MessageFromAPI): Message {
+    return {
+      id: message.id.toString(),
+      sender: {
+        id: message.sender.id.toString(),
+        name: message.sender.name,
+        username: message.sender.username,
+      },
+      text: message.text,
+      timestamp: message.date * 1000, // Convert to milliseconds if needed
+      isRead: message.is_read,
+      mediaType: message.media_type,
+      mediaUrl: message.avatar_url,
+      duration: message.duration,
+    };
+  }
+
+  /**
+   * Convert API chat format to client-side format
+   */
+  static convertToClientChat(apiChat: any): Chat {
+    const fullAvatarUrl = apiChat.avatar_url
+      ? `${API_BASE_URL}${apiChat.avatar_url}`
+      : undefined;
+
+    return {
+      id: apiChat.id.toString(),
+      type: apiChat.type as ChatType,
+      name: apiChat.name,
+      avatar_url: fullAvatarUrl, // Use the constructed full URL or undefined
+      avatar_url: apiChat.avatar_url, // Keep original relative path if part of the Chat type
+      unread_count: apiChat.unread_count || 0,
+      last_message: apiChat.last_message ? this.convertToClientMessage(apiChat.last_message) : undefined,
+      messages: [],
+    };
+  }
+
+  /**
+   * Fetch chats with optional type filtering
+   */
+  static async getChats(type: ChatType | 'all' = 'all', limit: number = 20, offset: number = 0): Promise<ChatsResponse> {
+    try {
+      const typeParam = type !== 'all' ? `&filter_type=${type}` : '';
+      const offsetParam = offset > 0 ? `&offset=${offset}` : ''; // Note: Backend /chats endpoint currently doesn't use offset
+      const response = await fetch(`${API_BASE_URL}/telegram/chats?limit=${limit}${typeParam}${offsetParam}`);
+      
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`);
+      }
+      
+      const apiResponse: { chats: any[], stats: any } = await response.json();
+      const clientChats: Chat[] = apiResponse.chats.map(apiChat => this.convertToClientChat(apiChat));
+
+      return {
+        chats: clientChats,
+        stats: apiResponse.stats,
+      };
+    } catch (error) {
+      console.error('Failed to fetch chats:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Load more chats with pagination
+   */
+  static async loadMoreChats(
+    type: ChatType | 'all' = 'all', 
+    limit: number = 20,
+    offset: number = 0
+  ): Promise<ChatsResponse> {
+    return this.getChats(type, limit, offset);
+  }
+
+  /**
+   * Fetch messages for a specific chat
+   */
+  static async getMessages(
+    chatId: string, 
+    limit: number = DEFAULT_MESSAGE_LIMIT, // Use constant
+    offset_id: number = 0
+  ): Promise<MessagesResponse> {
+    try {
+      const offsetParam = offset_id > 0 ? `&offset_id=${offset_id}` : '';
+      const response = await fetch(
+        `${API_BASE_URL}/telegram/chats/${chatId}/messages?limit=${limit}${offsetParam}`
+      );
+      
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`);
+      }
+      
+      const apiMessages: MessageFromAPI[] = await response.json();
+      const clientMessages: Message[] = apiMessages.map(this.convertToClientMessage);
+      
+      return { messages: clientMessages };
+    } catch (error) {
+      console.error('Failed to fetch messages:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Load more messages with pagination (older messages)
+   */
+  static async loadMoreMessages(
+    chatId: string,
+    limit: number = DEFAULT_MESSAGE_LIMIT, // Use constant
+    offset_id: number = 0
+  ): Promise<MessagesResponse> {
+    return this.getMessages(chatId, limit, offset_id);
+  }
+
+  /**
+   * Send a message to a chat
+   */
+  static async sendMessage(chatId: string, text: string): Promise<any> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/telegram/chats/${chatId}/send_message`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ text }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to send message:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get media (photo, sticker, voice, document) from a message
+   */
+  static getMediaUrl(chatId: string, messageId: string): string {
+    return `${API_BASE_URL}/telegram/media/${chatId}/${messageId}`;
+  }
+  
+  /**
+   * Get chat avatar_url URL
+   */
+  static getChatAvatarUrl(chatId: string): string {
+    return `${API_BASE_URL}/telegram/chat_avatar/${chatId}`;
+  }
+}
+</file>
+
 <file path="src/types/telegram.ts">
 export interface User {
   id: string;
   name: string;
-  avatar?: string;
+  avatar_url?: string;
+  username?: string;
+}
+
+export interface Sender {
+  id: number;
+  name: string;
+  username?: string;
 }
 
 export interface Message {
@@ -722,18 +2588,58 @@ export interface Message {
   text: string;
   timestamp: number;
   isRead: boolean;
+  mediaType?: string | null;
+  mediaUrl?: string | null;
+  duration?: number | null;
+}
+
+export interface MessageFromAPI {
+  id: number;
+  sender: Sender;
+  text: string;
+  date: number;
+  is_read: boolean;
+  media_type?: string | null;
+  avatar_url?: string | null;
+  duration?: number | null;
 }
 
 export type ChatType = "group" | "channel" | "personal";
 
 export interface Chat {
-  id: string;
+  id: string | number;  // API returns numeric IDs
   type: ChatType;
   name: string;
-  avatar?: string;
-  lastMessage?: Message;
-  unreadCount?: number;
+  avatar_url?: string;
+  avatar_url?: string;
+  last_message?: Message;
+  last_message?: MessageFromAPI;
+  unread_count?: number;
   messages: Message[];
+}
+
+// New interface for API response that includes stats
+export interface TelegramApiResponse {
+  stats: {
+    personal_unread: number;
+    group_unread: number;
+    channel_unread: number;
+  };
+  chats: Chat[];
+}
+
+export interface PaginationState {
+  loading: boolean;
+  hasMore: boolean;
+  offset: number;
+  limit: number;
+}
+
+export interface MessagePaginationState {
+  loading: boolean;
+  hasMore: boolean;
+  offset_id: number;
+  limit: number;
 }
 </file>
 
