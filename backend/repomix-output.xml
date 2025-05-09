@@ -86,6 +86,7 @@ dependencies = [
 """
 FastAPI endpoints для Telegram API.
 """
+import re
 from fastapi import APIRouter, Depends, Query, HTTPException, Body, Header
 from fastapi.responses import StreamingResponse, FileResponse
 import io
@@ -101,14 +102,20 @@ router = APIRouter()
 async def get_chats(
     filter_type: Optional[ChatType] = Query(ChatType.ALL, description="Filter chats by type"),
     limit: int = Query(20, ge=1, le=100, description="Number of chats to retrieve"),
+    offset_id: Optional[int] = Query(None, description="Offset dialog ID for pagination"),
+    offset_date: Optional[int] = Query(None, description="Offset date (unix timestamp) for pagination"),
+    offset_peer_type: Optional[str] = Query(None, description="Offset peer type (user, chat, channel) for pagination"),
+    offset_peer_id: Optional[int] = Query(None, description="Offset peer ID for pagination"),
     tg_client = Depends(get_telegram_client)
 ):
     """
-    Получить список чатов Telegram с фильтрацией по типу и статистику непрочитанных.
+    Получить список чатов Telegram с фильтрацией по типу, пагинацией и статистику непрочитанных.
     """
-    chats = await TelegramService.get_chats(tg_client, filter_type, limit)
+    chats, next_offset = await TelegramService.get_chats(
+        tg_client, filter_type, limit, offset_id, offset_date, offset_peer_type, offset_peer_id
+    )
     stats = await TelegramService.get_chats_stats(tg_client)
-    return {"stats": stats, "chats": chats}
+    return {"stats": stats, "chats": chats, "next_offset": next_offset}
 
 @router.get("/chats/{chat_id}/messages", response_model=List[Message])
 async def get_chat_messages(
@@ -213,13 +220,19 @@ async def auth_logout(tg_client = Depends(get_telegram_client)):
     """Log out the current session."""
     return await TelegramService.logout(tg_client)
 
+
 @router.get("/chat_avatar/{chat_id}")
 async def get_chat_avatar(chat_id: int, tg_client = Depends(get_telegram_client)):
     """Get chat/group/channel avatar thumbnail with caching headers."""
     entity = await tg_client.get_entity(chat_id)
     if not getattr(entity, 'photo', None):
         raise HTTPException(status_code=404, detail="No avatar")
-    tmp_path = await tg_client.download_profile_photo(entity)
+    # Ensure avatar directory exists
+    avatar_dir = "./avatar/"
+    os.makedirs(avatar_dir, exist_ok=True)
+    # Sanitize filename (remove forbidden characters)
+    safe_title = re.sub(r'[\\/*?:"<>|]', "_", getattr(entity, "title", str(chat_id)))
+    tmp_path = await tg_client.download_profile_photo(entity, file=os.path.join(avatar_dir, f"{safe_title}.jpg"))
     if not tmp_path or not os.path.exists(tmp_path):
         raise HTTPException(status_code=404, detail="Failed to download avatar")
     # Caching headers with ETag based on file_reference
@@ -428,6 +441,7 @@ class PhoneCodeHash(BaseModel):
 """
 Сервис бизнес-логики для Telegram.
 """
+import datetime
 from ..repositories.telegram import TelegramRepository
 from ..schemas.telegram import Chat, Message, ChatType, Sender, AuthStatus, PhoneCodeHash
 from telethon.tl.types import User as TelethonUser, Chat as TelethonChat, Channel as TelethonChannel
@@ -438,11 +452,43 @@ from fastapi import Request, HTTPException
 class TelegramService:
     """Business logic for Telegram operations."""
     @staticmethod
-    async def get_chats(client, filter_type: ChatType, limit: int) -> List[Chat]:
-        """Get a list of chats filtered by type (with avatar_url)."""
-        dialogs = await TelegramRepository.get_dialogs(client, limit)
+    async def get_chats(client, filter_type: ChatType, limit: int, offset_id: int = None, offset_date: int = None, offset_peer_type: str = None, offset_peer_id: int = None):
+        """Get a list of chats filtered by type (with avatar_url) with pagination support."""
+        from telethon.tl.types import PeerUser, PeerChat, PeerChannel
+        import logging
+        
+        # Логирование параметров для отладки
+        print(f"Params: limit={limit}, offset_id={offset_id}, offset_date={offset_date}, offset_peer_type={offset_peer_type}, offset_peer_id={offset_peer_id}")
+        
+        dialogs_kwargs = {
+            "limit": limit + 1
+        }
+        
+        # Формируем только необходимые параметры, чтобы не передавать None
+        if offset_id is not None:
+            dialogs_kwargs["offset_id"] = offset_id
+        if offset_date is not None:
+            dialogs_kwargs["offset_date"] = datetime.datetime.fromtimestamp(offset_date, tz=datetime.timezone.utc)
+        if offset_peer_type and offset_peer_id:
+            if offset_peer_type == "user":
+                dialogs_kwargs["offset_peer"] = PeerUser(offset_peer_id)
+            elif offset_peer_type == "chat":
+                dialogs_kwargs["offset_peer"] = PeerChat(offset_peer_id)
+            elif offset_peer_type == "channel":
+                dialogs_kwargs["offset_peer"] = PeerChannel(offset_peer_id)
+        
+        # Отладочный вывод
+        print(f"Telethon params: {dialogs_kwargs}")
+        
+        dialogs = await client.get_dialogs(**dialogs_kwargs)
+        
+        print(f"Retrieved {len(dialogs)} dialogs from Telethon")
+        
+        # Обработка результатов
         result_chats: List[Chat] = []
-        for dialog in dialogs:
+        count = 0
+        
+        for dialog in dialogs[:limit]:
             chat_type_actual: ChatType = ChatType.PERSONAL
             if dialog.is_user:
                 chat_type_actual = ChatType.PERSONAL
@@ -450,12 +496,19 @@ class TelegramService:
                 chat_type_actual = ChatType.GROUP
             elif dialog.is_channel:
                 chat_type_actual = ChatType.CHANNEL
+            
+            # Фильтруем только если задан конкретный тип (не ALL)
             if filter_type != ChatType.ALL and chat_type_actual != filter_type:
                 continue
+                
+            print(f"Processing dialog: id={dialog.id}, name={dialog.name}, type={chat_type_actual}")
+            
             last_msg_pydantic = None
             if dialog.message:
                 last_msg_pydantic = await TelegramService._convert_telethon_message(dialog.message, client, dialog.id)
-            avatar_url = f"/chat_avatar/{dialog.id}" if getattr(dialog, 'photo', None) else None
+            
+            avatar_url = f"/telegram/chat_avatar/{dialog.id}" if getattr(getattr(dialog, 'entity', None), 'photo', None) else None
+            
             chat_model = Chat(
                 id=dialog.id,
                 type=chat_type_actual,
@@ -464,10 +517,48 @@ class TelegramService:
                 last_message=last_msg_pydantic,
                 avatar_url=avatar_url
             )
+            
             result_chats.append(chat_model)
-            if len(result_chats) >= limit:
+            count += 1
+            if count >= limit:
                 break
-        return result_chats
+        
+        # Формирование next_offset для следующей страницы
+        next_offset = None
+        if len(dialogs) > limit:
+            next_dialog = dialogs[limit]
+            print(f"Next dialog for pagination: id={next_dialog.id}, name={next_dialog.name}")
+            
+            peer_type = None
+            peer_id = None
+            
+            if next_dialog.is_user:
+                peer_type = "user"
+                peer_id = next_dialog.entity.id
+            elif next_dialog.is_group:
+                peer_type = "chat"
+                peer_id = next_dialog.entity.id
+            elif next_dialog.is_channel:
+                peer_type = "channel"
+                peer_id = next_dialog.entity.id
+            
+            # Получаем ID сообщения и дату из диалога
+            offset_id = None
+            offset_date = None
+            if hasattr(next_dialog, "message") and next_dialog.message:
+                offset_id = next_dialog.message.id
+                offset_date = int(next_dialog.message.date.timestamp())
+                print(f"Next dialog message: id={offset_id}, date={offset_date}")
+            
+            next_offset = {
+                "offset_id": offset_id,
+                "offset_date": offset_date,
+                "offset_peer_type": peer_type,
+                "offset_peer_id": peer_id
+            }
+            print(f"Prepared next_offset: {next_offset}")
+        
+        return result_chats, next_offset
 
     @staticmethod
     async def get_chats_stats(client) -> Dict[str, object]:

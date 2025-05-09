@@ -29,6 +29,7 @@ const TelegramPage: React.FC<TelegramPageProps> = ({ onStatsUpdate }) => {
   const [chats, setChats] = useState<Chat[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [showFloatingLoadMore, setShowFloatingLoadMore] = useState<boolean>(false);
   const [stats, setStats] = useState<{
     personal_unread: number;
     group_unread: number;
@@ -44,6 +45,9 @@ const TelegramPage: React.FC<TelegramPageProps> = ({ onStatsUpdate }) => {
     limit: DEFAULT_LIMIT
   });
 
+  // Ref for chat list container to handle scroll events
+  const chatListRef = useRef<HTMLDivElement>(null);
+
   // Update parent component when stats change
   useEffect(() => {
     if (stats && onStatsUpdate) {
@@ -51,7 +55,7 @@ const TelegramPage: React.FC<TelegramPageProps> = ({ onStatsUpdate }) => {
     }
   }, [stats, onStatsUpdate]);
 
-  // Fetch chats from the API
+  // Fetch chats from the API - FIXED: removed pagination.offsetDate from dependencies
   const fetchChats = useCallback(async (reset: boolean = true) => {
     try {
       setLoading(true);
@@ -62,7 +66,10 @@ const TelegramPage: React.FC<TelegramPageProps> = ({ onStatsUpdate }) => {
         setPagination(prev => ({ ...prev, offsetDate: undefined, hasMore: true }));
       }
       
-      const response = await TelegramApiService.getChats(activeFilter, pagination.limit, pagination.offsetDate);
+      // Get date from current state only if not resetting
+      const date = reset ? undefined : pagination.offsetDate;
+      
+      const response = await TelegramApiService.getChats(activeFilter, pagination.limit, date);
       
       // Convert backend chat format to frontend format
       const chatList = response.chats.map(chat => TelegramApiService.convertToClientChat(chat));
@@ -91,7 +98,7 @@ const TelegramPage: React.FC<TelegramPageProps> = ({ onStatsUpdate }) => {
     } finally {
       setLoading(false);
     }
-  }, [activeFilter, pagination.limit, pagination.offsetDate]);
+  }, [activeFilter, pagination.limit]); // FIXED: removed pagination.offsetDate from dependencies
 
   // Function to load more chats (pagination)
   const loadMoreChats = useCallback(async () => {
@@ -137,10 +144,34 @@ const TelegramPage: React.FC<TelegramPageProps> = ({ onStatsUpdate }) => {
     }
   }, [activeFilter, pagination.loading, pagination.hasMore, pagination.limit, pagination.offsetDate]);
 
-  // Load chats when component mounts or filter changes
+  // Handle scroll events for infinite scrolling
+  const handleScroll = useCallback(() => {
+    if (!chatListRef.current || pagination.loading) return;
+    const { scrollTop, scrollHeight, clientHeight } = chatListRef.current;
+    const scrolledToBottom = (scrollHeight - scrollTop - clientHeight) < 100;
+    
+    // Show the floating button when we're near the bottom and have more items to load
+    setShowFloatingLoadMore(scrolledToBottom && pagination.hasMore);
+    
+    if (scrolledToBottom && pagination.hasMore) {
+      loadMoreChats();
+    }
+  }, [loadMoreChats, pagination.hasMore, pagination.loading]);
+
+  // Add scroll event listener
   useEffect(() => {
+    const chatListElement = chatListRef.current;
+    if (chatListElement) {
+      chatListElement.addEventListener('scroll', handleScroll);
+      return () => chatListElement.removeEventListener('scroll', handleScroll);
+    }
+  }, [handleScroll]);
+
+  // FIXED: Load chats only when filter changes, not when fetchChats or offsetDate changes
+  useEffect(() => {
+    // Load chats on mount or when filter changes
     fetchChats(true);
-  }, [fetchChats, activeFilter]);
+  }, [activeFilter]); // FIXED: removed fetchChats from dependencies
 
   // Check if we're in mobile view
   useEffect(() => {
@@ -259,7 +290,7 @@ const TelegramPage: React.FC<TelegramPageProps> = ({ onStatsUpdate }) => {
                 stats={stats} 
                 isLoading={loading} 
               />
-              <div className="flex-1 overflow-y-auto">
+              <div ref={chatListRef} className="flex-1 overflow-y-auto relative">
                 {loading && !chats.length ? (
                   <div className="flex justify-center items-center h-full">
                     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-700"></div>
@@ -300,6 +331,23 @@ const TelegramPage: React.FC<TelegramPageProps> = ({ onStatsUpdate }) => {
                           )}
                         </button>
                       </div>
+                    )}
+                    
+                    {showFloatingLoadMore && (
+                      <button 
+                        onClick={loadMoreChats}
+                        disabled={pagination.loading}
+                        className="fixed bottom-4 right-4 px-4 py-2 bg-indigo-500 text-white rounded-full shadow-lg hover:bg-indigo-600 transition disabled:opacity-50"
+                      >
+                        {pagination.loading ? (
+                          <span className="flex items-center">
+                            <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></span>
+                            Loading...
+                          </span>
+                        ) : (
+                          'Load more'
+                        )}
+                      </button>
                     )}
                     
                     {filteredChats.length === 0 && !pagination.loading && (
@@ -387,7 +435,7 @@ const TelegramPage: React.FC<TelegramPageProps> = ({ onStatsUpdate }) => {
               stats={stats} 
               isLoading={loading} 
             />
-            <div className="flex-1 overflow-y-auto">
+            <div ref={chatListRef} className="flex-1 overflow-y-auto relative">
               {loading && !chats.length ? (
                 <div className="flex justify-center items-center h-32">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-700"></div>
@@ -428,6 +476,23 @@ const TelegramPage: React.FC<TelegramPageProps> = ({ onStatsUpdate }) => {
                         )}
                       </button>
                     </div>
+                  )}
+                  
+                  {showFloatingLoadMore && (
+                    <button 
+                      onClick={loadMoreChats}
+                      disabled={pagination.loading}
+                      className="fixed bottom-4 right-4 px-4 py-2 bg-indigo-500 text-white rounded-full shadow-lg hover:bg-indigo-600 transition disabled:opacity-50"
+                    >
+                      {pagination.loading ? (
+                        <span className="flex items-center">
+                          <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></span>
+                          Loading...
+                        </span>
+                      ) : (
+                        'Load more'
+                      )}
+                    </button>
                   )}
                   
                   {filteredChats.length === 0 && !pagination.loading && (

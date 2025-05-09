@@ -12,7 +12,6 @@ interface ChatItemProps {
 const ChatItem: React.FC<ChatItemProps> = ({ chat, onSelectChat, isSelected }) => {
   // Destructure chat properties with safe fallbacks
   const { 
-    id, 
     name, 
     avatar_url, 
     last_message, 
@@ -47,7 +46,6 @@ const ChatItem: React.FC<ChatItemProps> = ({ chat, onSelectChat, isSelected }) =
   
   // Extract message text, handle both API and mock data formats
   const messageText = message ? (message.text || '') : '';
-  const senderName = message?.sender?.name || '';
   // Use from_author if present, otherwise fallback to sender.id === 'me'
   const isOwnMessage = message?.from_author === true || String(message?.sender?.id) === 'me';
   
