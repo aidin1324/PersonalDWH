@@ -8,7 +8,7 @@ import io
 import os
 from ..core.dependencies import get_telegram_client
 from ..services.telegram import TelegramService
-from ..schemas.telegram import Chat, ChatType, Message, ChatStats, AuthRequestCode, AuthSubmitCode, AuthStatus, PhoneCodeHash
+from ..schemas.telegram import Chat, ChatType, Message, ChatStats, AuthRequestCode, AuthSubmitCode, AuthStatus, PhoneCodeHash, UserProfileInsights
 from typing import List, Optional, Dict
 
 router = APIRouter()
@@ -158,3 +158,18 @@ async def get_chat_avatar(chat_id: int, tg_client = Depends(get_telegram_client)
     if etag:
         headers["ETag"] = etag
     return FileResponse(tmp_path, media_type="image/jpeg", headers=headers)
+
+@router.get("/chats/{chat_id}/persona_mirror", response_model=UserProfileInsights)
+async def get_persona_mirror(
+    chat_id: int,
+    analyze_person: str = "self",
+    tg_client = Depends(get_telegram_client)
+):
+    """
+    Получить краткий AI-портрет собеседника (Persona Mirror) по последним сообщениям чата.
+    :param chat_id: ID чата
+    :param analyze_person: 'self' или имя/username собеседника
+    :return: Словарь с результатами анализа (UserProfileInsights)
+    """
+    result = await TelegramService.analyze_persona_mirror(tg_client, chat_id, analyze_person)
+    return result

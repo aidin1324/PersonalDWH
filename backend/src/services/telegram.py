@@ -3,7 +3,7 @@
 """
 import datetime
 from ..repositories.telegram import TelegramRepository
-from ..schemas.telegram import Chat, Message, ChatType, Sender, AuthStatus, PhoneCodeHash
+from ..schemas.telegram import Chat, Message, ChatType, Sender, AuthStatus, PhoneCodeHash, UserProfileInsights
 from telethon.tl.types import User as TelethonUser, Chat as TelethonChat, Channel as TelethonChannel
 from telethon.errors.rpcerrorlist import SessionPasswordNeededError, PhoneCodeInvalidError
 from typing import List, Optional, Dict
@@ -276,3 +276,65 @@ class TelegramService:
             await client.log_out()
             return AuthStatus(is_authorized=False, detail="Successfully logged out.")
         return AuthStatus(is_authorized=False, detail="User was not logged in.")
+
+    @staticmethod
+    async def analyze_persona_mirror(client, chat_id: int, analyze_person: str = "self", max_tokens: int = 40000) -> dict:
+        """
+        Анализирует последние сообщения в чате и возвращает краткий портрет собеседника (Persona Mirror) с помощью LLM.
+        :param client: TelegramClient
+        :param chat_id: ID чата
+        :param analyze_person: 'self' или username/имя собеседника
+        :param max_tokens: Максимальное количество токенов для анализа (по умолчанию 40k)
+        :return: Словарь с результатами анализа (UserProfileInsights)
+        """
+        import os
+        import tiktoken
+        from langchain_openai import ChatOpenAI
+        from trustcall import create_extractor
+        from ..schemas.telegram import UserProfileInsights
+
+        # Получаем последние 500 сообщений (или меньше, если токенов много)
+        messages = await TelegramRepository.get_messages(client, chat_id, limit=200)
+        # Собираем текстовую переписку (только текстовые сообщения, без пустых)
+        conversation_lines = []
+        for m in messages:
+            text = getattr(m, 'text', None) or getattr(m, 'message', None)
+            if text:
+                sender = getattr(m.sender, 'first_name', None) or getattr(m.sender, 'username', None) or str(m.sender_id)
+                conversation_lines.append(f"{sender}: {text}")
+        conversation = "\n".join(conversation_lines)
+
+        # Ограничение по токенам (используем tiktoken для подсчёта)
+        enc = tiktoken.encoding_for_model("gpt-4o")
+        tokens = enc.encode(conversation)
+        # Если переписка превышает лимит, обрезаем только последние сообщения, чтобы не тратить лишние токены
+        if len(tokens) > max_tokens:
+            # Находим границу по строкам, чтобы не обрезать середину сообщения
+            # Обрезаем conversation_lines с конца, пока не уложимся в лимит
+            total_tokens = 0
+            selected_lines = []
+            for line in reversed(conversation_lines):
+                line_tokens = len(enc.encode(line))
+                if total_tokens + line_tokens > max_tokens:
+                    break
+                selected_lines.append(line)
+                total_tokens += line_tokens
+            conversation = "\n".join(reversed(selected_lines))
+        # Настройка LLM
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise RuntimeError("OPENAI_API_KEY не найден в переменных окружения.")
+        llm = ChatOpenAI(model="gpt-4o", api_key=api_key)
+        bound = create_extractor(
+            llm,
+            tools=[UserProfileInsights],
+            tool_choice="UserProfileInsights",
+        )
+        prompt = (
+            f"""Extract the insights from the following conversation in Russian language, you analyze '{analyze_person}':\n<convo>\n{conversation}\n</convo>"""
+        )
+        result = bound.invoke(prompt)
+        # Проверяем структуру ответа
+        if not result or "responses" not in result or not result["responses"]:
+            raise RuntimeError("LLM не вернул валидный ответ для Persona Mirror.")
+        return result["responses"][0]
