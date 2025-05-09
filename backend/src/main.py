@@ -3,12 +3,23 @@
 Подключает роутеры и настраивает события запуска/остановки.
 """
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from .api import telegram
 from .core.dependencies import client
 from .core.config import PHONE_NUMBER, SESSION_NAME, API_ID, API_HASH
 
 app = FastAPI(title="Telegram Personal DWH API")
-app.include_router(telegram.router)
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],  # Or ["*"] for all origins
+    allow_credentials=True,
+    allow_methods=["*"],  # Allows all methods
+    allow_headers=["*"],  # Allows all headers
+)
+
+app.include_router(telegram.router, prefix="/telegram", tags=["telegram"])
 
 @app.on_event("startup")
 async def startup_event():

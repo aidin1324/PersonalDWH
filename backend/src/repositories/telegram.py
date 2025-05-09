@@ -10,22 +10,16 @@ class TelegramRepository:
     Репозиторий для работы с Telegram через Telethon.
     """
     @staticmethod
-    async def get_dialogs(client: TelegramClient) -> List[Dialog]:
+    async def get_dialogs(client: TelegramClient, limit: int) -> List[Dialog]:
         """
-        Получает список диалогов пользователя.
+        Получает список диалогов пользователя (оптимизировано).
         """
-        dialogs = []
-        async for dialog in client.iter_dialogs():
-            dialogs.append(dialog)
-        return dialogs
+        return await client.get_dialogs(limit=limit)
 
     @staticmethod
     async def get_messages(client: TelegramClient, chat_id: int, limit: int, offset_id: int = 0) -> List[TelethonMessage]:
         """
-        Получает сообщения из чата.
+        Получает сообщения из чата (оптимизировано).
         """
-        entity = await client.get_entity(chat_id)
-        messages = []
-        async for msg in client.iter_messages(entity, limit=limit, offset_id=offset_id):
-            messages.append(msg)
-        return messages
+        entity = await client.get_input_entity(chat_id)
+        return await client.get_messages(entity, limit=limit, offset_id=offset_id)

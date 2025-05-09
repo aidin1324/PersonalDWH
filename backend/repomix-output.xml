@@ -1,0 +1,630 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+<additional_info>
+
+</additional_info>
+
+</file_summary>
+
+<directory_structure>
+.env_example
+.python-version
+pyproject.toml
+src/api/telegram.py
+src/core/config.py
+src/core/dependencies.py
+src/main.py
+src/repositories/telegram.py
+src/schemas/telegram.py
+src/services/telegram.py
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path=".env_example">
+TELEGRAM_API_ID=
+TELEGRAM_API_HASH=
+TELEGRAM_PHONE_NUMBER=
+</file>
+
+<file path=".python-version">
+3.8
+</file>
+
+<file path="pyproject.toml">
+[project]
+name = "backend"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    "fastapi>=0.100.0",
+    "uvicorn[standard]>=0.20.0",
+    "telethon>=1.28.5",
+]
+</file>
+
+<file path="src/api/telegram.py">
+"""
+FastAPI endpoints для Telegram API.
+"""
+from fastapi import APIRouter, Depends, Query, HTTPException, Body, Header
+from fastapi.responses import StreamingResponse, FileResponse
+import io
+import os
+from ..core.dependencies import get_telegram_client
+from ..services.telegram import TelegramService
+from ..schemas.telegram import Chat, ChatType, Message, ChatStats, AuthRequestCode, AuthSubmitCode, AuthStatus, PhoneCodeHash
+from typing import List, Optional, Dict
+
+router = APIRouter()
+
+@router.get("/chats", response_model=Dict[str, object])
+async def get_chats(
+    filter_type: Optional[ChatType] = Query(ChatType.ALL, description="Filter chats by type"),
+    limit: int = Query(20, ge=1, le=100, description="Number of chats to retrieve"),
+    tg_client = Depends(get_telegram_client)
+):
+    """
+    Получить список чатов Telegram с фильтрацией по типу и статистику непрочитанных.
+    """
+    chats = await TelegramService.get_chats(tg_client, filter_type, limit)
+    stats = await TelegramService.get_chats_stats(tg_client)
+    return {"stats": stats, "chats": chats}
+
+@router.get("/chats/{chat_id}/messages", response_model=List[Message])
+async def get_chat_messages(
+    chat_id: int,
+    limit: int = Query(20, ge=1, le=100, description="Number of messages to retrieve"),
+    offset_id: Optional[int] = Query(0, description="Offset message ID to fetch older messages"),
+    tg_client = Depends(get_telegram_client)
+):
+    """
+    Получить последние N сообщений из чата.
+    """
+    return await TelegramService.get_chat_messages(tg_client, chat_id, limit, offset_id)
+
+@router.post("/chats/{chat_id}/send_message")
+async def send_message(
+    chat_id: int,
+    text: str = Body(..., embed=True, description="Text to send"),
+    tg_client = Depends(get_telegram_client)
+):
+    """
+    Отправить сообщение в чат или личные сообщения.
+    """
+    success = await TelegramService.send_message(tg_client, chat_id, text)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to send message")
+    return {"status": "ok"}
+
+@router.get("/media/{chat_id}/{message_id}")
+async def download_media(
+    chat_id: int,
+    message_id: int,
+    range_header: Optional[str] = Header(None, alias="Range"),
+    tg_client = Depends(get_telegram_client)
+):
+    """
+    Optimized download media endpoint with caching, range support, and faster Telethon parameters.
+    """
+    import tempfile
+    tmp_dir = tempfile.gettempdir()
+    entity = await tg_client.get_entity(chat_id)
+    msg = await tg_client.get_messages(entity, ids=message_id)
+    if not msg or not (msg.photo or msg.document or msg.sticker or msg.voice):
+        raise HTTPException(status_code=404, detail="Media not found")
+    # Remove part_size_kb and workers for compatibility
+    file_path = await tg_client.download_media(
+        msg,
+        file=tmp_dir
+    )
+    if not file_path or not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="Failed to download media")
+    filename = os.path.basename(file_path)
+    # Determine content type
+    if msg.photo:
+        content_type = "image/jpeg"
+    elif msg.sticker:
+        content_type = "image/webp"
+    elif msg.voice:
+        content_type = "audio/ogg"
+    elif msg.document:
+        content_type = "application/octet-stream"
+    else:
+        content_type = "application/octet-stream"
+    # Headers for caching and range support
+    etag = f'W/"{int(os.path.getmtime(file_path))}"'
+    headers = {
+        "Cache-Control": "public, max-age=86400",
+        "ETag": etag,
+        "Accept-Ranges": "bytes",
+        "Content-Disposition": f'inline; filename="{filename}"'
+    }
+    status_code = 206 if range_header else 200
+    return FileResponse(
+        path=file_path,
+        media_type=content_type,
+        headers=headers,
+        status_code=status_code
+    )
+
+@router.post("/auth/request_code", response_model=PhoneCodeHash)
+async def auth_request_code(request_data: AuthRequestCode, tg_client = Depends(get_telegram_client)):
+    """Request a login code from Telegram."""
+    return await TelegramService.request_login_code(tg_client, request_data.phone_number)
+
+@router.post("/auth/submit_code", response_model=AuthStatus)
+async def auth_submit_code(request_data: AuthSubmitCode, tg_client = Depends(get_telegram_client)):
+    """Submit the login code (and password if 2FA is enabled)."""
+    return await TelegramService.submit_login_code(
+        tg_client,
+        request_data.phone_number,
+        request_data.phone_code_hash,
+        request_data.code,
+        request_data.password
+    )
+
+@router.get("/auth/status", response_model=AuthStatus)
+async def auth_status(tg_client = Depends(get_telegram_client)):
+    """Check the current authentication status."""
+    return await TelegramService.get_auth_status(tg_client)
+
+@router.post("/auth/logout", response_model=AuthStatus)
+async def auth_logout(tg_client = Depends(get_telegram_client)):
+    """Log out the current session."""
+    return await TelegramService.logout(tg_client)
+
+@router.get("/chat_avatar/{chat_id}")
+async def get_chat_avatar(chat_id: int, tg_client = Depends(get_telegram_client)):
+    """Get chat/group/channel avatar thumbnail with caching headers."""
+    entity = await tg_client.get_entity(chat_id)
+    if not getattr(entity, 'photo', None):
+        raise HTTPException(status_code=404, detail="No avatar")
+    tmp_path = await tg_client.download_profile_photo(entity)
+    if not tmp_path or not os.path.exists(tmp_path):
+        raise HTTPException(status_code=404, detail="Failed to download avatar")
+    # Caching headers with ETag based on file_reference
+    etag = None
+    if getattr(entity.photo, 'file_reference', None):
+        etag = f'W/"{entity.photo.file_reference.hex()}"'
+    headers = {"Cache-Control": "public, max-age=86400"}
+    if etag:
+        headers["ETag"] = etag
+    return FileResponse(tmp_path, media_type="image/jpeg", headers=headers)
+</file>
+
+<file path="src/core/config.py">
+"""
+Модуль конфигурации приложения.
+Содержит переменные окружения и параметры для подключения к Telegram API.
+"""
+import os
+
+from telethon import TelegramClient
+
+API_ID = os.getenv("TELEGRAM_API_ID")
+API_HASH = os.getenv("TELEGRAM_API_HASH")
+PHONE_NUMBER = os.getenv("TELEGRAM_PHONE_NUMBER")
+SESSION_NAME = "telegram_session"
+
+
+async def main():
+    client = TelegramClient(SESSION_NAME, int(API_ID), API_HASH)
+    await client.start(phone=PHONE_NUMBER)
+    print("Authorization complete.")
+    await client.disconnect()
+
+if __name__ == "__main__":
+    import asyncio
+    asyncio.run(main())
+</file>
+
+<file path="src/core/dependencies.py">
+"""
+Модуль зависимостей для FastAPI.
+Содержит функцию для получения TelegramClient с проверкой соединения и авторизации.
+"""
+from fastapi import Depends, HTTPException
+from telethon import TelegramClient
+from .config import API_ID, API_HASH, SESSION_NAME
+
+client = TelegramClient(SESSION_NAME, int(API_ID) if API_ID else 0, API_HASH if API_HASH else "")
+
+async def get_telegram_client():
+    """
+    Возвращает асинхронный TelegramClient.
+    Проверяет соединение и авторизацию.
+    """
+    if not client.is_connected():
+        if not all([API_ID, API_HASH]):
+            raise HTTPException(status_code=500, detail="Telegram API credentials not configured on the server.")
+        try:
+            await client.connect()
+            if not await client.is_user_authorized():
+                raise HTTPException(status_code=401, detail="Telegram client not authorized. Пожалуйста, авторизуйте сессию.")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Could not connect to Telegram: {str(e)}")
+    return client
+</file>
+
+<file path="src/main.py">
+"""
+Главная точка входа FastAPI-приложения.
+Подключает роутеры и настраивает события запуска/остановки.
+"""
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from .api import telegram
+from .core.dependencies import client
+from .core.config import PHONE_NUMBER, SESSION_NAME, API_ID, API_HASH
+
+app = FastAPI(title="Telegram Personal DWH API")
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],  # Or ["*"] for all origins
+    allow_credentials=True,
+    allow_methods=["*"],  # Allows all methods
+    allow_headers=["*"],  # Allows all headers
+)
+
+app.include_router(telegram.router, prefix="/telegram", tags=["telegram"])
+
+@app.on_event("startup")
+async def startup_event():
+    if all([API_ID, API_HASH, PHONE_NUMBER]):
+        try:
+            await client.connect()
+            if not await client.is_user_authorized():
+                print(f"User {PHONE_NUMBER} is not authorized. Please run a separate script to authorize the session '{SESSION_NAME}.session'.")
+            else:
+                print(f"Successfully connected and authorized as {PHONE_NUMBER}.")
+        except Exception as e:
+            print(f"Error connecting to Telegram during startup: {e}")
+    else:
+        print("Telegram client not started due to missing API credentials.")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    if client.is_connected():
+        await client.disconnect()
+        print("Disconnected from Telegram.")
+</file>
+
+<file path="src/repositories/telegram.py">
+"""
+Репозиторий для работы с Telegram через Telethon.
+"""
+from telethon import TelegramClient
+from telethon.tl.types import Dialog, Message as TelethonMessage
+from typing import List
+
+class TelegramRepository:
+    """
+    Репозиторий для работы с Telegram через Telethon.
+    """
+    @staticmethod
+    async def get_dialogs(client: TelegramClient, limit: int) -> List[Dialog]:
+        """
+        Получает список диалогов пользователя (оптимизировано).
+        """
+        return await client.get_dialogs(limit=limit)
+
+    @staticmethod
+    async def get_messages(client: TelegramClient, chat_id: int, limit: int, offset_id: int = 0) -> List[TelethonMessage]:
+        """
+        Получает сообщения из чата (оптимизировано).
+        """
+        entity = await client.get_input_entity(chat_id)
+        return await client.get_messages(entity, limit=limit, offset_id=offset_id)
+</file>
+
+<file path="src/schemas/telegram.py">
+"""
+Pydantic models for Telegram API.
+"""
+from pydantic import BaseModel
+from typing import Optional
+from enum import Enum
+
+class ChatType(str, Enum):
+    PERSONAL = "personal"
+    GROUP = "group"
+    CHANNEL = "channel"
+    ALL = "all"
+
+class Sender(BaseModel):
+    id: int
+    name: str
+    username: Optional[str] = None
+
+class Message(BaseModel):
+    """Represents a Telegram message."""
+    id: int
+    text: Optional[str] = None
+    date: int
+    sender: Sender
+    media_type: Optional[str] = None
+    media_url: Optional[str] = None
+    duration: Optional[int] = None
+    is_read: Optional[bool] = None
+    sender_avatar_url: Optional[str] = None
+    from_author: bool  # True если сообщение от текущего пользователя
+
+class Chat(BaseModel):
+    """Represents a Telegram chat/dialog."""
+    id: int
+    type: ChatType
+    name: str
+    unread_count: Optional[int] = 0
+    last_message: Optional[Message] = None
+    avatar_url: Optional[str] = None  # URL для аватарки
+
+class ChatStats(BaseModel):
+    """Unread messages statistics by chat type."""
+    personal_unread: int = 0
+    group_unread: int = 0
+    channel_unread: int = 0
+
+class AuthRequestCode(BaseModel):
+    phone_number: str
+
+class AuthSubmitCode(BaseModel):
+    phone_number: str
+    phone_code_hash: str
+    code: str
+    password: Optional[str] = None
+
+class AuthStatus(BaseModel):
+    is_authorized: bool
+    user_id: Optional[int] = None
+    phone: Optional[str] = None
+
+class PhoneCodeHash(BaseModel):
+    phone_code_hash: str
+</file>
+
+<file path="src/services/telegram.py">
+"""
+Сервис бизнес-логики для Telegram.
+"""
+from ..repositories.telegram import TelegramRepository
+from ..schemas.telegram import Chat, Message, ChatType, Sender, AuthStatus, PhoneCodeHash
+from telethon.tl.types import User as TelethonUser, Chat as TelethonChat, Channel as TelethonChannel
+from telethon.errors.rpcerrorlist import SessionPasswordNeededError, PhoneCodeInvalidError
+from typing import List, Optional, Dict
+from fastapi import Request, HTTPException
+
+class TelegramService:
+    """Business logic for Telegram operations."""
+    @staticmethod
+    async def get_chats(client, filter_type: ChatType, limit: int) -> List[Chat]:
+        """Get a list of chats filtered by type (with avatar_url)."""
+        dialogs = await TelegramRepository.get_dialogs(client, limit)
+        result_chats: List[Chat] = []
+        for dialog in dialogs:
+            chat_type_actual: ChatType = ChatType.PERSONAL
+            if dialog.is_user:
+                chat_type_actual = ChatType.PERSONAL
+            elif dialog.is_group:
+                chat_type_actual = ChatType.GROUP
+            elif dialog.is_channel:
+                chat_type_actual = ChatType.CHANNEL
+            if filter_type != ChatType.ALL and chat_type_actual != filter_type:
+                continue
+            last_msg_pydantic = None
+            if dialog.message:
+                last_msg_pydantic = await TelegramService._convert_telethon_message(dialog.message, client, dialog.id)
+            avatar_url = f"/chat_avatar/{dialog.id}" if getattr(dialog, 'photo', None) else None
+            chat_model = Chat(
+                id=dialog.id,
+                type=chat_type_actual,
+                name=dialog.name,
+                unread_count=dialog.unread_count,
+                last_message=last_msg_pydantic,
+                avatar_url=avatar_url
+            )
+            result_chats.append(chat_model)
+            if len(result_chats) >= limit:
+                break
+        return result_chats
+
+    @staticmethod
+    async def get_chats_stats(client) -> Dict[str, object]:
+        """Get unread messages statistics by chat type."""
+        dialogs = await TelegramRepository.get_dialogs(client, limit=1000)  # Получаем до 1000 чатов для статистики
+        stats = {"personal_unread": 0, "group_unread": 0, "channel_unread": 0}
+        for dialog in dialogs:
+            if dialog.is_user:
+                stats["personal_unread"] += dialog.unread_count or 0
+            elif dialog.is_group:
+                stats["group_unread"] += dialog.unread_count or 0
+            elif dialog.is_channel:
+                stats["channel_unread"] += dialog.unread_count or 0
+        return stats
+
+    @staticmethod
+    async def send_message(client, chat_id: int, text: str) -> bool:
+        """Send a message to a chat."""
+        try:
+            await client.send_message(chat_id, text)
+            return True
+        except Exception:
+            return False
+
+    @staticmethod
+    async def get_chat_messages(client, chat_id: int, limit: int, offset_id: int = 0) -> List[Message]:
+        """Get messages from a chat (parallel conversion)."""
+        messages = await TelegramRepository.get_messages(client, chat_id, limit, offset_id)
+        import asyncio
+        tasks = [TelegramService._convert_telethon_message(m, client, chat_id) for m in messages]
+        result_messages = [m for m in await asyncio.gather(*tasks) if m]
+        return result_messages
+
+    @staticmethod
+    async def _convert_telethon_message(msg, client, chat_id: int) -> Optional[Message]:
+        """Convert Telethon Message to Pydantic Message with media and read status support (optimized sender)."""
+        if not msg:
+            return None
+        sender_entity = None
+        sender_id = None
+        sender_name = "Unknown"
+        sender_username = None
+        # Оптимизация: используем msg.sender если есть
+        if hasattr(msg, 'sender') and msg.sender:
+            sender_entity = msg.sender
+            sender_id = getattr(sender_entity, 'id', None)
+            if hasattr(sender_entity, 'first_name') or hasattr(sender_entity, 'title'):
+                sender_name = TelegramService._get_sender_name(sender_entity)
+            sender_username = getattr(sender_entity, 'username', None)
+        elif msg.sender_id:
+            sender_id = msg.sender_id
+        # Add sender avatar URL if available
+        sender_avatar_url = None
+        if sender_entity and getattr(sender_entity, 'photo', None):
+            sender_avatar_url = f"/telegram/chat_avatar/{sender_id}"
+        media_type = None
+        media_url = None
+        duration = None
+        if msg.sticker:
+            media_type = "sticker"
+            media_url = f"/media/{chat_id}/{msg.id}"
+        elif msg.photo:
+            media_type = "photo"
+            media_url = f"/media/{chat_id}/{msg.id}"
+        elif msg.voice:
+            media_type = "voice"
+            duration = getattr(msg.voice, 'duration', None)
+            media_url = f"/media/{chat_id}/{msg.id}"
+        elif msg.document:
+            media_type = "document"
+            media_url = f"/media/{chat_id}/{msg.id}"
+        is_read = getattr(msg, 'read', None)
+        if is_read is None:
+            is_read = not getattr(msg, 'unread', False)
+        # Определяем, от автора ли сообщение
+        me = await client.get_me()
+        from_author = (sender_id == me.id) if sender_id and me else False
+        return Message(
+            id=msg.id,
+            text=getattr(msg, 'text', None) or getattr(msg, 'message', None),
+            date=int(msg.date.timestamp()),
+            sender=Sender(id=sender_id or 0, name=sender_name, username=sender_username),
+            media_type=media_type,
+            media_url=media_url,
+            duration=duration,
+            is_read=is_read,
+            sender_avatar_url=sender_avatar_url,
+            from_author=from_author
+        )
+
+    @staticmethod
+    def _get_sender_name(entity):
+        if hasattr(entity, 'first_name') and entity.first_name:
+            name = entity.first_name
+            if hasattr(entity, 'last_name') and entity.last_name:
+                name += f" {entity.last_name}"
+            return name.strip()
+        if hasattr(entity, 'title'):
+            return entity.title
+        return "N/A"
+
+    @staticmethod
+    async def request_login_code(client, phone_number: str) -> PhoneCodeHash:
+        """Request a login code from Telegram."""
+        if not client.is_connected():
+            await client.connect()
+        try:
+            result = await client.send_code_request(phone_number)
+            return PhoneCodeHash(phone_code_hash=result.phone_code_hash)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to request code: {str(e)}")
+
+    @staticmethod
+    async def submit_login_code(client, phone_number: str, phone_code_hash: str, code: str, password: Optional[str] = None) -> AuthStatus:
+        """Submit the login code (and password if 2FA is enabled)."""
+        if not client.is_connected():
+            await client.connect()
+        try:
+            await client.sign_in(phone=phone_number, code=code, phone_code_hash=phone_code_hash)
+            me = await client.get_me()
+            return AuthStatus(is_authorized=True, user_id=me.id, phone=me.phone)
+        except SessionPasswordNeededError:
+            if not password:
+                raise HTTPException(status_code=400, detail="Password is required for 2FA.")
+            try:
+                await client.sign_in(password=password)
+                me = await client.get_me()
+                return AuthStatus(is_authorized=True, user_id=me.id, phone=me.phone)
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"Failed to sign in with password: {str(e)}")
+        except PhoneCodeInvalidError:
+            raise HTTPException(status_code=400, detail="Invalid phone code.")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to submit code: {str(e)}")
+
+    @staticmethod
+    async def get_auth_status(client) -> AuthStatus:
+        """Check the current authentication status."""
+        if not client.is_connected():
+            await client.connect() # Ensure client is connected before checking authorization
+        
+        is_authorized = await client.is_user_authorized()
+        if is_authorized:
+            me = await client.get_me()
+            return AuthStatus(is_authorized=True, user_id=me.id, phone=me.phone)
+        return AuthStatus(is_authorized=False)
+
+    @staticmethod
+    async def logout(client) -> AuthStatus:
+        """Log out the current session."""
+        if not client.is_connected():
+             await client.connect()
+
+        if await client.is_user_authorized():
+            await client.log_out()
+            return AuthStatus(is_authorized=False, detail="Successfully logged out.")
+        return AuthStatus(is_authorized=False, detail="User was not logged in.")
+</file>
+
+</files>

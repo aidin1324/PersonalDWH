@@ -26,6 +26,8 @@ class Message(BaseModel):
     media_url: Optional[str] = None
     duration: Optional[int] = None
     is_read: Optional[bool] = None
+    sender_avatar_url: Optional[str] = None
+    from_author: bool  # True если сообщение от текущего пользователя
 
 class Chat(BaseModel):
     """Represents a Telegram chat/dialog."""
@@ -34,9 +36,27 @@ class Chat(BaseModel):
     name: str
     unread_count: Optional[int] = 0
     last_message: Optional[Message] = None
+    avatar_url: Optional[str] = None  # URL для аватарки
 
 class ChatStats(BaseModel):
     """Unread messages statistics by chat type."""
     personal_unread: int = 0
     group_unread: int = 0
     channel_unread: int = 0
+
+class AuthRequestCode(BaseModel):
+    phone_number: str
+
+class AuthSubmitCode(BaseModel):
+    phone_number: str
+    phone_code_hash: str
+    code: str
+    password: Optional[str] = None
+
+class AuthStatus(BaseModel):
+    is_authorized: bool
+    user_id: Optional[int] = None
+    phone: Optional[str] = None
+
+class PhoneCodeHash(BaseModel):
+    phone_code_hash: str
