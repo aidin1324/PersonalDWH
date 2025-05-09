@@ -71,3 +71,92 @@ export interface MessagePaginationState {
   offset_id: number;
   limit: number;
 }
+
+// Persona Mirror типы
+export interface Interest {
+  interest_area: string;
+  keywords_indicators: string[];
+  engagement_level_hint: string;
+  example_phrases: string[];
+}
+
+export interface DominantStyle {
+  description: string;
+  formality: string;
+  verbosity: string;
+  tone_preference_hint: string;
+  example_phrases: string[];
+}
+
+export interface JargonTerm {
+  domain: string;
+  terms: string[];
+  example_phrase: string;
+}
+
+export interface PersonalExpression {
+  expression: string;
+  example_phrase: string;
+}
+
+export interface PersonaChange {
+  conversation_function: string;
+  from_description: string;
+  to_description: string;
+}
+
+export interface LinguisticMarkers {
+  characteristic_vocabulary_or_jargon: JargonTerm[];
+  frequent_personal_expressions: PersonalExpression[];
+  persona_changing_over_time: PersonaChange[];
+}
+
+export interface CommunicationStyle {
+  dominant_style: DominantStyle;
+  linguistic_markers: LinguisticMarkers;
+}
+
+export interface InformationProcessingHint {
+  style: string;
+  example_phrases: string[];
+}
+
+export interface ProblemSolvingTendencies {
+  approach: string;
+  example_phrases: string[];
+}
+
+export interface ExpressionOfOpinions {
+  manner: string;
+  example_phrases: string[];
+}
+
+export interface CognitiveApproach {
+  information_processing_hint: InformationProcessingHint;
+  problem_solving_tendencies: ProblemSolvingTendencies;
+  expression_of_opinions: ExpressionOfOpinions;
+}
+
+export interface LearningIndicator {
+  learning_topic_or_skill: string;
+  evidence_type: string;
+  example_phrases: string[];
+}
+
+export interface ValueMotivator {
+  inferred_value_or_motivator: string;
+  example_phrases: string[];
+}
+
+export interface PersonaMirror {
+  persona_mirror: string;
+}
+
+export interface UserProfileInsights {
+  core_interests_and_passions: Interest[];
+  communication_style_and_preferences: CommunicationStyle;
+  cognitive_approach_and_decision_making: CognitiveApproach;
+  learning_and_development_indicators: LearningIndicator[];
+  values_and_motivators_hint: ValueMotivator[];
+  persona_mirror: PersonaMirror;
+}

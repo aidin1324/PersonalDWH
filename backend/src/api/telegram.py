@@ -8,7 +8,7 @@ import io
 import os
 from ..core.dependencies import get_telegram_client
 from ..services.telegram import TelegramService
-from ..schemas.telegram import Chat, ChatType, Message, ChatStats, AuthRequestCode, AuthSubmitCode, AuthStatus, PhoneCodeHash, UserProfileInsights
+from ..schemas.telegram import Chat, ChatType, CognitiveApproach, CommunicationStyle, DominantStyle, ExpressionOfOpinions, InformationProcessingHint, Interest, LearningIndicator, LinguisticMarkers, Message, ChatStats, AuthRequestCode, AuthSubmitCode, AuthStatus, PersonaChange, PersonaMirror, PersonalExpression, PhoneCodeHash, ProblemSolvingTendencies, UserProfileInsights, ValueMotivator
 from typing import List, Optional, Dict
 
 router = APIRouter()

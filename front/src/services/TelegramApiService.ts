@@ -1,4 +1,4 @@
-import type { Chat, Message, ChatType, MessageFromAPI } from '../types/telegram';
+import type { Chat, Message, ChatType, MessageFromAPI, UserProfileInsights } from '../types/telegram';
 
 const API_BASE_URL = 'http://localhost:8000';
 const DEFAULT_MESSAGE_LIMIT = 15; // Added constant for message limit
@@ -185,11 +185,69 @@ export class TelegramApiService {
   static getMediaUrl(chatId: string, messageId: string): string {
     return `${API_BASE_URL}/telegram/media/${chatId}/${messageId}`;
   }
-  
-  /**
+    /**
    * Get chat avatar_url URL
    */
   static getChatAvatarUrl(chatId: string): string {
     return `${API_BASE_URL}/telegram/chat_avatar/${chatId}`;
+  }
+  
+  /**
+   * Получает AI-портрет (Persona Mirror) пользователя или собеседника
+   * @param chatId ID чата
+   * @param analyzePerson 'self' для анализа себя или имя/username собеседника
+   * @returns Promise с результатами анализа
+   */  static async getPersonaMirror(
+    chatId: string | number,
+    analyzePerson: 'self' | string // 'self' или username/имя собеседника
+  ): Promise<UserProfileInsights> {
+    const url = `${API_BASE_URL}/telegram/chats/${chatId}/persona_mirror?analyze_person=${encodeURIComponent(analyzePerson)}`;
+    
+    try {
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Error ${response.status}: Failed to fetch persona mirror data`);
+      }
+      
+      const data = await response.json();
+      console.log('Raw persona mirror data:', data);
+      
+      // Проверяем наличие необходимых полей
+      if (!data || typeof data !== 'object') {
+        throw new Error('Invalid data format: expected object');
+      }
+      
+      // Создаем безопасную версию данных с дефолтными значениями
+      const safeData: UserProfileInsights = {
+        core_interests_and_passions: data.core_interests_and_passions || [],
+        communication_style_and_preferences: data.communication_style_and_preferences || {
+          dominant_style: {
+            description: 'Нет данных',
+            formality: 'Нет данных',
+            verbosity: 'Нет данных',
+            tone_preference_hint: 'Нет данных',
+            example_phrases: []
+          },
+          linguistic_markers: {
+            characteristic_vocabulary_or_jargon: [],
+            frequent_personal_expressions: [],
+            persona_changing_over_time: []
+          }
+        },
+        cognitive_approach_and_decision_making: data.cognitive_approach_and_decision_making || {
+          information_processing_hint: { style: 'Нет данных', example_phrases: [] },
+          problem_solving_tendencies: { approach: 'Нет данных', example_phrases: [] },
+          expression_of_opinions: { manner: 'Нет данных', example_phrases: [] }
+        },
+        learning_and_development_indicators: data.learning_and_development_indicators || [],
+        values_and_motivators_hint: data.values_and_motivators_hint || [],
+        persona_mirror: data.persona_mirror || { persona_mirror: 'Психологический портрет недоступен' }
+      };
+      
+      return safeData;
+    } catch (error) {
+      console.error('Failed to get persona mirror:', error);
+      throw error;
+    }
   }
 }

@@ -6,7 +6,8 @@ export type AIAnalysisType =
   | 'suggestions'
   | 'draft' 
   | 'translate' 
-  | 'insights';
+  | 'insights'
+  | 'persona_mirror';
 
 interface AIResponse {
   content: string;
@@ -37,12 +38,14 @@ export async function analyzeConversation(chat: Chat, type: AIAnalysisType): Pro
         break;
       case 'suggestions':
         response = await AIAgentService.draftResponse(chat.messages);
-        break;
-      case 'insights':
+        break;      case 'insights':
         response = await AIAgentService.getConversationInsights(chat);
         break;
       case 'translate':
         response = await AIAgentService.translateMessages(chat.messages);
+        break;
+      case 'persona_mirror':
+        response = await AIAgentService.getPersonaMirrorSummary(chat);
         break;
       default:
         response = await AIAgentService.summarizeConversation(chat.messages);
@@ -159,11 +162,29 @@ export class AIAgentService {
       timestamp: Date.now()
     };
   }
-
   /**
    * Helper function to simulate API delay
    */
   private static async simulateApiDelay(): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, 1500));
+  }
+  /**
+   * Get Persona Mirror summary for a chat
+   * @param chat The chat to analyze
+   * @returns Promise with persona mirror analysis
+   */
+  static async getPersonaMirrorSummary(chat: Chat): Promise<AIResponse> {
+    await this.simulateApiDelay();
+    
+    // Проверяем, является ли чат личным (не группой/каналом)
+    const isPersonalChat = chat.type === 'personal';
+    
+    return {
+      content: isPersonalChat 
+        ? "Persona Mirror позволяет создать AI-портрет личности на основе сообщений в чате. Выберите, кого вы хотите проанализировать: себя или собеседника." 
+        : "Функция Persona Mirror доступна только для личных чатов.",
+      type: 'persona_mirror',
+      timestamp: Date.now()
+    };
   }
 }

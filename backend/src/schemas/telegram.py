@@ -90,9 +90,9 @@ class PersonalExpression(BaseModel):
 
 class PersonaChange(BaseModel):
     """Изменение персоны пользователя во времени."""
-    conversation_function: str = Field(..., alias="how conversation flow is changing", description="Как меняется разговор в течении общения?")
-    from_description: str = Field(..., alias="from", description="Описание персоны в начале диалога")
-    to_description: str = Field(..., alias="to", description="Описание персоны к концу диалога")
+    conversation_function: str = Field(..., description="Как меняется разговор в течении общения?")
+    from_description: str = Field(..., description="Описание персоны в начале диалога")
+    to_description: str = Field(..., description="Описание персоны к концу диалога")
 
 class LinguisticMarkers(BaseModel):
     """Лингвистические маркеры: жаргон, выражения, изменения стиля."""
@@ -103,9 +103,11 @@ class LinguisticMarkers(BaseModel):
         ..., description="Список часто используемых выражений или идиом"
     )
     persona_changing_over_time: List[PersonaChange] = Field(
-        ..., alias="persona changing over time", description="Информация о смене персоны во времени"
+        ..., description="Информация о смене персоны во времени"
     )
-
+    class Config:
+        populate_by_name = True
+        
 class CommunicationStyle(BaseModel):
     """Коммуникационный стиль пользователя и лингвистические маркеры."""
     dominant_style: DominantStyle = Field(..., description="Сводка по доминирующему стилю")
@@ -154,10 +156,12 @@ class PersonaMirror(BaseModel):
     persona_mirror: str = Field(..., description="На основе чата, описать человека, какой он по факту? Построить его портрет (250-350 слов)")
 
 class UserProfileInsights(BaseModel):
-    """AI-карточка Persona Mirror: краткий портрет собеседника (интересы, стиль, когнитивные особенности и др.). все на русском"""
+    """AI-карточка Persona Mirror, ВСЕ ДОЛЖНО БЫТЬ ОТНОСИТЕЛЬНО ANALYZE PERSON: краткий портрет собеседника (интересы, стиль, когнитивные особенности и др.). все на русском"""
     core_interests_and_passions: List[Interest] = Field(..., description="Список основных интересов и увлечений пользователя с индикаторами и примерами")
     communication_style_and_preferences: CommunicationStyle = Field(..., description="Стиль коммуникации и лингвистические маркеры")
     cognitive_approach_and_decision_making: CognitiveApproach = Field(..., description="Как пользователь обрабатывает информацию и принимает решения")
     learning_and_development_indicators: List[LearningIndicator] = Field(..., description="Индикаторы обучения и развития пользователя")
     values_and_motivators_hint: List[ValueMotivator] = Field(..., description="Предполагаемые ценности и мотиваторы пользователя")
-    persona_mirror: PersonaMirror = Field(..., alias="Портрет человека", description="Полное описание человека, строим его портрет")
+    persona_mirror: PersonaMirror = Field(..., description="Полное описание человека, строим его портрет")
+    class Config:
+        populate_by_name = True

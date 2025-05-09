@@ -11,7 +11,7 @@ import { ArrowLeftIcon, MagnifyingGlassIcon, XMarkIcon } from '@heroicons/react/
 const currentUser: User = { id: "me", name: "Me", avatar_url: "https://i.pravatar.cc/150?u=me" };
 
 // Initial pagination settings
-const DEFAULT_LIMIT = 20;
+const DEFAULT_LIMIT = 60;
 
 interface TelegramPageProps {
   // Add prop for stats callback

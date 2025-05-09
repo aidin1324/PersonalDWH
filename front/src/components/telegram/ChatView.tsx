@@ -12,7 +12,7 @@ interface ChatViewProps {
   currentUser: User; 
 }
 
-const DEFAULT_LIMIT = 15;
+const DEFAULT_LIMIT = 20;
 
 const ChatView: React.FC<ChatViewProps> = ({ chat, currentUser }) => {
   const [message, setMessage] = useState<string>('');
