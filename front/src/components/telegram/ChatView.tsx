@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { PaperAirplaneIcon, SparklesIcon, ArrowDownIcon, ArrowUpIcon } from '@heroicons/react/24/solid';
-import type { Chat, User, Message, MessagePaginationState } from '../../types/telegram';
+import { PaperAirplaneIcon, SparklesIcon, ArrowDownIcon, ArrowUpIcon, DocumentTextIcon } from '@heroicons/react/24/solid';
+import type { Chat, User, Message, MessagePaginationState, ChatSummary } from '../../types/telegram';
 import MessageItem from './MessageItem';
 import AIAssistant from './AIAssistant';
+import ChatSummaryView from './ChatSummaryView';
 import { TelegramApiService } from '../../services/TelegramApiService';
 import { AvatarFallback } from '../../utils/avatarUtils';
 
@@ -23,6 +24,12 @@ const ChatView: React.FC<ChatViewProps> = ({ chat, currentUser }) => {
   const inputRef = useRef<HTMLInputElement>(null);
   
   const [localMessages, setLocalMessages] = useState<Message[]>([]);
+  
+  // Chat summary state
+  const [showChatSummary, setShowChatSummary] = useState<boolean>(false);
+  const [chatSummary, setChatSummary] = useState<ChatSummary | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState<boolean>(false);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
   
   const [messagePagination, setMessagePagination] = useState<MessagePaginationState>({
     loading: false,
@@ -158,6 +165,19 @@ const ChatView: React.FC<ChatViewProps> = ({ chat, currentUser }) => {
     }
   }, [chat]);
 
+  // Reset summary state when chat changes
+  useEffect(() => {
+    if (chat) {
+      // Reset summary state when changing to a different chat
+      setChatSummary(null);
+      setShowChatSummary(false);
+      setSummaryError(null);
+    }
+  }, [chat?.id]);
+
+  // Показывать карточку, если идёт загрузка, есть ошибка или явно открыта summary
+  const shouldShowSummaryCard = summaryLoading || summaryError || showChatSummary;
+
   const handleSendMessage = async () => {
     if (!chat || !message.trim() || isSubmitting) return;
     
@@ -199,6 +219,72 @@ const ChatView: React.FC<ChatViewProps> = ({ chat, currentUser }) => {
 
   const toggleAIAssistant = () => {
     setShowAIAssistant(prev => !prev);
+  };
+
+  const toggleChatSummary = async () => {
+    // Если идёт загрузка — не закрывать карточку
+    if (summaryLoading) return;
+    // Если карточка открыта и не идёт загрузка — закрыть
+    if (showChatSummary && !summaryLoading) {
+      setShowChatSummary(false);
+      setSummaryError(null);
+      setChatSummary(null);
+      return;
+    }
+    // Открыть карточку и начать загрузку
+    setShowChatSummary(true);
+    setSummaryLoading(true);
+    setSummaryError(null);
+    setChatSummary(null);
+    if (showAIAssistant) setShowAIAssistant(false);
+    if (chat) {
+      try {
+        const response = await TelegramApiService.getChatSummary(chat.id);
+        let summaryObj: ChatSummary | null = null;
+        // Если это ChatSummaryResponse (объект-обёртка)
+        if (
+          response && typeof response === 'object' &&
+          'summary' in response &&
+          typeof response.summary === 'object' && response.summary !== null &&
+          'summary' in response.summary && typeof response.summary.summary === 'string'
+        ) {
+          const s = response.summary;
+          summaryObj = {
+            summary: s.summary,
+            key_points: s.key_points,
+            important_messages: s.important_messages,
+            unread_messages: s.unread_messages,
+            total_analyzed: s.total_analyzed
+          };
+        } else if (
+          response && typeof response === 'object' &&
+          'summary' in response && typeof response.summary === 'string' &&
+          'key_points' in response && Array.isArray(response.key_points) &&
+          'important_messages' in response && Array.isArray(response.important_messages) &&
+          'unread_messages' in response && Array.isArray(response.unread_messages) &&
+          'total_analyzed' in response && typeof response.total_analyzed === 'number'
+        ) {
+          summaryObj = {
+            summary: response.summary,
+            key_points: response.key_points,
+            important_messages: response.important_messages,
+            unread_messages: response.unread_messages,
+            total_analyzed: response.total_analyzed
+          };
+        }
+        if (summaryObj) {
+          setChatSummary(summaryObj);
+        } else {
+          throw new Error('Invalid summary response format');
+        }
+      } catch (error) {
+        setSummaryError('Failed to load chat summary. Please try again.');
+      } finally {
+        setSummaryLoading(false);
+      }
+    } else {
+      setSummaryLoading(false);
+    }
   };
 
   if (!chat) {
@@ -263,6 +349,21 @@ const ChatView: React.FC<ChatViewProps> = ({ chat, currentUser }) => {
           </div>
         </div>
         <div className="flex items-center space-x-2">
+          <motion.button 
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={toggleChatSummary}
+            className={`p-2 rounded-full transition-colors ${
+              showChatSummary 
+              ? 'bg-blue-100 text-blue-700'
+              : 'hover:bg-gray-100 text-gray-500'
+            }`}
+            aria-label="Chat Summary"
+            title="View Chat Summary"
+          >
+            <DocumentTextIcon className="h-5 w-5" />
+          </motion.button>
+          
           <motion.button 
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
@@ -357,6 +458,17 @@ const ChatView: React.FC<ChatViewProps> = ({ chat, currentUser }) => {
       <AnimatePresence>
         {showAIAssistant && (
           <AIAssistant chat={{...chat, messages: localMessages}} onClose={toggleAIAssistant} />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {shouldShowSummaryCard && (
+          <ChatSummaryView 
+            summary={chatSummary}
+            isLoading={summaryLoading}
+            error={summaryError}
+            onClose={toggleChatSummary}
+          />
         )}
       </AnimatePresence>
 

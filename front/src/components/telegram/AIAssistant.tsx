@@ -2,10 +2,11 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { XMarkIcon, ArrowPathIcon, ChatBubbleBottomCenterTextIcon, UserCircleIcon } from '@heroicons/react/24/outline';
 import { SparklesIcon } from '@heroicons/react/24/solid';
-import type { Chat, UserProfileInsights } from '../../types/telegram';
+import type { Chat, UserProfileInsights, ChatSummary } from '../../types/telegram';
 import { analyzeConversation } from '../../services/AIAgentService';
 import { TelegramApiService } from '../../services/TelegramApiService';
 import PersonaMirrorView from './PersonaMirrorView';
+import ChatSummaryView from './ChatSummaryView';
 
 interface AIAssistantProps {
   chat: Chat;
@@ -23,10 +24,16 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ chat, onClose }) => {
   const [personaTarget, setPersonaTarget] = useState<'self' | 'other'>('other');
   const [personaName, setPersonaName] = useState<string>('');
   const [showPersonaMirrorResult, setShowPersonaMirrorResult] = useState<boolean>(false);
+  
+  // State variables for ChatSummaryView
+  const [showChatSummary, setShowChatSummary] = useState<boolean>(false);
+  const [chatSummaryData, setChatSummaryData] = useState<ChatSummary | null>(null);
+  const [chatSummaryLoading, setChatSummaryLoading] = useState<boolean>(false);
+  const [chatSummaryError, setChatSummaryError] = useState<string | null>(null);
 
   // Только для личных чатов
   const isPersonalChat = chat.type === 'personal';
-
+  
   const handleAnalyze = async (type: AnalysisType) => {
     // Сбросим предыдущие результаты
     setAnalysisType(type);
@@ -47,6 +54,27 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ chat, onClose }) => {
     setIsLoading(true);
 
     try {
+      // For summary, call the real API endpoint and show the ChatSummaryView
+      if (type === 'summary') {
+        setChatSummaryLoading(true);
+        setChatSummaryError(null);
+        
+        try {
+          const response = await TelegramApiService.getChatSummary(chat.id);
+          console.log('Received summary response:', response);
+          setChatSummaryData(response);
+          setShowChatSummary(true);
+        } catch (err) {
+          console.error('Error getting chat summary:', err);
+          setChatSummaryError(err instanceof Error ? err.message : 'Failed to fetch chat summary');
+        } finally {
+          setChatSummaryLoading(false);
+          setIsLoading(false);
+        }
+        return;
+      }
+      
+      // For other analysis types, use the existing function
       const result = await analyzeConversation(chat, type || 'summary');
       setAnalysis(result);
     } catch (error) {
@@ -115,8 +143,24 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ chat, onClose }) => {
     resetAnalysis();
   };
 
+  const closeChatSummary = () => {
+    setShowChatSummary(false);
+    setChatSummaryData(null);
+    setChatSummaryError(null);
+  };
+
   return (
-    <>      {showPersonaMirrorResult && personaMirrorData && (
+    <>
+      {showChatSummary && (
+        <ChatSummaryView
+          summary={chatSummaryData}
+          isLoading={chatSummaryLoading}
+          error={chatSummaryError}
+          onClose={closeChatSummary}
+        />
+      )}
+    
+      {showPersonaMirrorResult && personaMirrorData && (
         <>
           {/* Добавляем дополнительный слой проверки для безопасного рендеринга */}
           {typeof personaMirrorData === 'object' ? (
@@ -244,8 +288,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ chat, onClose }) => {
             <div className="bg-white rounded-lg shadow-sm p-4 border border-indigo-100 mb-4">
               <div className="flex items-center mb-3">
                 <span className="text-sm font-medium text-indigo-800 mr-2">
-                  {
-                  analysisType === 'summary' ? 'Conversation Summary' : 'Analysis'}
+                  {analysisType === 'summary' ? 'Conversation Summary' : 'Analysis'}
                 </span>
                 <motion.button
                   whileHover={{ scale: 1.1 }}

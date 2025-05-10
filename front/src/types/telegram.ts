@@ -37,7 +37,7 @@ export interface MessageFromAPI {
   from_author?: boolean; // Added new field
 }
 
-export type ChatType = "group" | "channel" | "personal";
+export type ChatType = "group" | "channel" | "personal" | "unknown";
 
 export interface Chat {
   id: string | number;  // API returns numeric IDs
@@ -78,6 +78,30 @@ export interface Interest {
   keywords_indicators: string[];
   engagement_level_hint: string;
   example_phrases: string[];
+}
+
+// Chat Summary типы
+export interface ChatSummary {
+  summary: string;
+  key_points: string[];
+  important_messages: {
+    id: number;
+    text: string;
+    date: number;
+    sender: Sender;
+    media_type?: string | null;
+    media_url?: string | null;
+    duration?: number | null;
+    is_read?: boolean | null;
+    sender_avatar_url?: string | null;
+    from_author?: boolean;
+  }[];
+  unread_messages: Message[];
+  total_analyzed: number;
+}
+
+export interface ChatSummaryResponse {
+  summary: ChatSummary;
 }
 
 export interface DominantStyle {

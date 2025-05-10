@@ -1,4 +1,4 @@
-import type { Chat, Message, ChatType, MessageFromAPI, UserProfileInsights } from '../types/telegram';
+import type { Chat, Message, ChatType, MessageFromAPI, UserProfileInsights, ChatSummaryResponse } from '../types/telegram';
 
 const API_BASE_URL = 'http://localhost:8000';
 const DEFAULT_MESSAGE_LIMIT = 15; // Added constant for message limit
@@ -185,11 +185,120 @@ export class TelegramApiService {
   static getMediaUrl(chatId: string, messageId: string): string {
     return `${API_BASE_URL}/telegram/media/${chatId}/${messageId}`;
   }
-    /**
+
+  /**
+   * Get full chat with messages (for mock purposes)
+   * @param chatId ID of the chat to get
+   * @returns Promise with the full chat including messages
+   */  static async getFullChat(chatId: string | number): Promise<Chat> {
+    try {
+      // First try to get the chat from API
+      try {
+        const response = await fetch(`${API_BASE_URL}/telegram/chats/${chatId}`);
+        
+        if (response.ok) {
+          const chatData = await response.json();
+          console.log(`Retrieved chat data for ID ${chatId}:`, chatData);
+          
+          // Then get messages for the chat
+          const messagesResponse = await this.getMessages(String(chatId), 20);
+          chatData.messages = messagesResponse.messages;
+          
+          return chatData;
+        }
+      } catch (apiError) {
+        console.warn(`API call for chat ${chatId} failed:`, apiError);
+        // Continue to fallback
+      }
+      
+      // Fallback: Get from chats list
+      console.log(`Using fallback method to find chat ${chatId}`);
+      const chatsResponse = await this.getChats();
+      const chat = chatsResponse.chats.find(c => String(c.id) === String(chatId));
+      
+      if (!chat) {
+        throw new Error(`Chat not found: ${chatId}`);
+      }
+      
+      // Then get messages for the chat
+      const messagesResponse = await this.getMessages(String(chatId), 20);
+      chat.messages = messagesResponse.messages;
+      
+      return chat;
+    } catch (error) {
+      console.error('Failed to get full chat:', error);
+      // Return an empty chat as fallback with the correct chat ID
+      return {
+        id: String(chatId),
+        type: 'unknown', // Changed from 'personal' to neutral 'unknown'
+        name: 'Chat ' + chatId,
+        messages: [], 
+        unread_count: 0,
+        avatar_url: undefined
+      };
+    }
+  }
+
+  /**
    * Get chat avatar_url URL
    */
   static getChatAvatarUrl(chatId: string): string {
     return `${API_BASE_URL}/telegram/chat_avatar/${chatId}`;
+  }  /**
+   * Get chat summary with TL;DR, key points, important and unread messages
+   * @param chatId ID of the chat to get summary for
+   * @param maxTokens Maximum number of tokens to analyze (optional)
+   * @returns Promise with chat summary data
+   */  static async getChatSummary(
+    chatId: string | number, 
+    maxTokens: number = 4000
+  ): Promise<ChatSummaryResponse> {
+    try {
+      // Make direct API call first
+      try {
+        const apiUrl = `${API_BASE_URL}/telegram/chats/${chatId}/summary`;
+        console.log(`Direct API call to: ${apiUrl}?max_tokens=${maxTokens}`);
+        
+        const response = await fetch(`${apiUrl}?max_tokens=${maxTokens}`);
+        
+        if (response.ok) {
+          const data = await response.json();
+          console.log('API response received successfully');
+          return data;
+        }
+        
+        console.warn(`API returned status: ${response.status}`);
+      } catch (directApiError) {
+        console.warn('Direct API call failed:', directApiError);
+      }
+      
+      // If direct API call failed, get chat info and try fallback
+      const chat = await this.getFullChat(chatId);
+      console.log(`Using fallback for chat ${chatId} of type ${chat.type}`);
+      
+      try {
+        // Try API again with chat type info
+        const apiUrl = `${API_BASE_URL}/telegram/chats/${chatId}/summary`;
+        const response = await fetch(`${apiUrl}?max_tokens=${maxTokens}&type=${chat.type}`);
+        
+        if (response.ok) {
+          const data = await response.json();
+          return data;
+        }
+        
+        throw new Error(`API error: ${response.status}`);
+      } catch (apiError) {
+        console.log(`All API attempts failed for chat ${chatId}, using mock data`);
+        
+        // If API is not available, use our mock implementation
+        return await import('../services/AIAgentService').then(module => {
+          return module.AIAgentService.getMockChatSummary(chat);
+        });
+      }
+    } catch (error) {
+      console.error('Failed to fetch chat summary:', error);
+      throw error;
+    }
   }
   
   /**
@@ -197,7 +306,8 @@ export class TelegramApiService {
    * @param chatId ID чата
    * @param analyzePerson 'self' для анализа себя или имя/username собеседника
    * @returns Promise с результатами анализа
-   */  static async getPersonaMirror(
+   */
+  static async getPersonaMirror(
     chatId: string | number,
     analyzePerson: 'self' | string // 'self' или username/имя собеседника
   ): Promise<UserProfileInsights> {

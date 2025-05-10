@@ -187,4 +187,101 @@ export class AIAgentService {
       timestamp: Date.now()
     };
   }
+
+  /**
+   * Generate a mock chat summary for testing
+   * @param chat The chat to summarize
+   * @returns Promise with mocked chat summary
+   */  static async getMockChatSummary(chat: Chat) {
+    await this.simulateApiDelay();
+    
+    // Generate mock data based on available messages
+    const messageCount = chat.messages?.length || 0;
+    const participants = new Set<string>();
+    const importantMessages: any[] = [];
+    const unreadMessages: any[] = [];
+    
+    if (chat.messages) {
+      chat.messages.forEach((msg, index) => {
+        participants.add(msg.sender.name);
+        
+        // Add some messages as important (every 3rd one for demo)
+        if (index % 3 === 0 && importantMessages.length < 3) {
+          importantMessages.push({
+            id: Number(msg.id),
+            text: msg.text,
+            date: Math.floor(msg.timestamp / 1000),
+            sender: {
+              id: Number(msg.sender.id),
+              name: msg.sender.name,
+              username: msg.sender.username || null
+            },
+            media_type: null,
+            media_url: null,
+            duration: null,
+            is_read: msg.isRead,
+            sender_avatar_url: msg.sender_avatar_url || null,
+            from_author: msg.from_author || false
+          });
+        }
+        
+        // Collect unread messages
+        if (!msg.isRead) {
+          unreadMessages.push(msg);
+        }
+      });
+    }
+    
+    // If no important messages found from real data, create mock ones
+    if (importantMessages.length === 0) {
+      importantMessages.push({
+        id: 1001,
+        text: "Привет! Как твои дела сегодня?",
+        date: Math.floor(Date.now() / 1000) - 7200,
+        sender: {
+          id: 42,
+          name: "Alice",
+          username: null
+        },
+        media_type: null,
+        media_url: null,
+        duration: null,
+        is_read: true,
+        sender_avatar_url: null,
+        from_author: false
+      });
+      
+      importantMessages.push({
+        id: 1002,
+        text: "Давай обсудим детали проекта и запланируем встречу на завтра.",
+        date: Math.floor(Date.now() / 1000) - 3600,
+        sender: {
+          id: 42,
+          name: "Alice",
+          username: null
+        },
+        media_type: null,
+        media_url: null,
+        duration: null,
+        is_read: true,
+        sender_avatar_url: null,
+        from_author: false
+      });
+    }
+    
+    return {
+      summary: {
+        summary: `Это ${messageCount}-сообщений в разговоре между ${Array.from(participants).join(', ')} о различных темах, включая планирование проектов, встречи и технические требования.`,
+        key_points: [
+          "Обсуждение сроков завершения проекта и предстоящих дедлайнов",
+          "Согласование времени и места проведения следующей встречи команды",
+          "Вопросы по техническим требованиям и спецификациям проекта",
+          "Договоренности о следующих шагах и распределении задач"
+        ],
+        important_messages: importantMessages,
+        unread_messages: unreadMessages,
+        total_analyzed: messageCount
+      }
+    };
+  }
 }
