@@ -3,7 +3,7 @@
 """
 import datetime
 from ..repositories.telegram import TelegramRepository
-from ..schemas.telegram import Chat, Message, ChatType, Sender, AuthStatus, PhoneCodeHash, UserProfileInsights
+from ..schemas.telegram import Chat, Message, ChatType, Sender, AuthStatus, PhoneCodeHash, UserProfileInsights, ChatSummary
 from telethon.tl.types import User as TelethonUser, Chat as TelethonChat, Channel as TelethonChannel
 from telethon.errors.rpcerrorlist import SessionPasswordNeededError, PhoneCodeInvalidError
 from typing import List, Optional, Dict
@@ -341,3 +341,110 @@ class TelegramService:
         if not result or "responses" not in result or not result["responses"]:
             raise RuntimeError("LLM не вернул валидный ответ для Persona Mirror.")
         return result["responses"][0]
+
+    @staticmethod
+    async def summarize_chat(client, chat_id: int, max_tokens: int = 4000) -> dict:
+        """
+        Возвращает summary (TL;DR), key points, важные сообщения и последние непрочитанные сообщения по чату.
+        Ограничение по токенам/сообщениям.
+        """
+        import os
+        import tiktoken
+        from langchain_openai import ChatOpenAI
+        from trustcall import create_extractor
+        from ..schemas.telegram import ChatSummary, Message
+
+        # Получаем последние 200 сообщений (или меньше, если токенов много)
+        messages = await TelegramRepository.get_messages(client, chat_id, limit=200)
+        # Сортируем по дате (от старых к новым)
+        messages = sorted(messages, key=lambda m: m.date)
+        # Собираем текстовую переписку
+        conversation_lines = []
+        for m in messages:
+            text = getattr(m, 'text', None) or getattr(m, 'message', None)
+            if text:
+                sender = getattr(m.sender, 'first_name', None) or getattr(m.sender, 'username', None) or str(m.sender_id)
+                timestamp = m.date.strftime("%Y.%m.%d %H:%M")
+                conversation_lines.append(f"[{timestamp}] {sender}: {text}")
+        conversation = "\n".join(conversation_lines)
+
+        # Ограничение по токенам
+        enc = tiktoken.encoding_for_model("gpt-4o")
+        tokens = enc.encode(conversation)
+        if len(tokens) > max_tokens:
+            total_tokens = 0
+            selected_lines = []
+            for line in reversed(conversation_lines):
+                line_tokens = len(enc.encode(line))
+                if total_tokens + line_tokens > max_tokens:
+                    break
+                selected_lines.append(line)
+                total_tokens += line_tokens
+            conversation = "\n".join(reversed(selected_lines))
+
+        # Последние непрочитанные сообщения (до 10)
+        unread_msgs = [m for m in messages if getattr(m, 'unread', False)]
+        unread_msgs = unread_msgs[-10:] if unread_msgs else []
+        # Преобразуем в pydantic Message
+        from ..services.telegram import TelegramService
+        unread_messages = [await TelegramService._convert_telethon_message(m, client, chat_id) for m in unread_msgs]
+        unread_messages = [m for m in unread_messages if m]
+
+        # Настройка LLM
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise RuntimeError("OPENAI_API_KEY не найден в переменных окружения.")
+        llm = ChatOpenAI(model="gpt-4.1-mini", api_key=api_key)
+        # Инструкция для LLM
+        prompt = (
+            f"""Сделай краткое TL;DR (summary) по переписке, выдели ключевые моменты (key points, списком), и процитируй 3-5 самых важных сообщений (важные сообщения, с указанием автора и времени).\n\n<convo>\n{conversation}\n</convo>\nОтвет верни в формате JSON с ключами: summary, key_points (list), important_messages (list of dict: text, author, date)."""
+        )
+        # Вызов LLM
+        result = llm.invoke(prompt)
+        import json
+        # Логируем результат LLM для диагностики
+        print("LLM raw result.content:", repr(getattr(result, 'content', result)))
+        content = getattr(result, 'content', result)
+        # Удаляем markdown-обёртку, если есть
+        if isinstance(content, str) and content.strip().startswith("```json"):
+            content = content.strip()
+            content = content[7:] if content.startswith("```json") else content
+            if content.endswith("```"):
+                content = content[:-3]
+            content = content.strip()
+        try:
+            parsed = json.loads(content)
+        except Exception as e:
+            # Логируем ошибку и содержимое
+            print("LLM JSON decode error:", str(e))
+            print("LLM content:", repr(content))
+            raise RuntimeError(f"LLM не вернул валидный JSON для summary. Content: {content}")
+        # important_messages -> Message[]
+        important_messages = []
+        from datetime import datetime
+        for im in parsed.get("important_messages", []):
+            date_val = im.get("date", 0)
+            if isinstance(date_val, str):
+                try:
+                    date_val = int(datetime.strptime(date_val, "%Y.%m.%d %H:%M").timestamp())
+                except Exception:
+                    date_val = 0
+            important_messages.append(Message(
+                id=0,
+                text=im.get("text"),
+                date=date_val,
+                sender={"id": 0, "name": im.get("author", ""), "username": None},
+                media_type=None,
+                media_url=None,
+                duration=None,
+                is_read=None,
+                sender_avatar_url=None,
+                from_author=False
+            ))
+        return ChatSummary(
+            summary=parsed.get("summary", ""),
+            key_points=parsed.get("key_points", []),
+            important_messages=important_messages,
+            unread_messages=unread_messages,
+            total_analyzed=len(conversation_lines)
+        )

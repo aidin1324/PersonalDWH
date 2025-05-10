@@ -165,3 +165,11 @@ class UserProfileInsights(BaseModel):
     persona_mirror: PersonaMirror = Field(..., description="Полное описание человека, строим его портрет")
     class Config:
         populate_by_name = True
+
+class ChatSummary(BaseModel):
+    """Сводка по чату: summary, key points, важные сообщения, последние непрочитанные."""
+    summary: str
+    key_points: List[str]
+    important_messages: List[Message]
+    unread_messages: List[Message]
+    total_analyzed: int

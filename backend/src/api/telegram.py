@@ -8,7 +8,7 @@ import io
 import os
 from ..core.dependencies import get_telegram_client
 from ..services.telegram import TelegramService
-from ..schemas.telegram import Chat, ChatType, CognitiveApproach, CommunicationStyle, DominantStyle, ExpressionOfOpinions, InformationProcessingHint, Interest, LearningIndicator, LinguisticMarkers, Message, ChatStats, AuthRequestCode, AuthSubmitCode, AuthStatus, PersonaChange, PersonaMirror, PersonalExpression, PhoneCodeHash, ProblemSolvingTendencies, UserProfileInsights, ValueMotivator
+from ..schemas.telegram import Chat, ChatType, CognitiveApproach, CommunicationStyle, DominantStyle, ExpressionOfOpinions, InformationProcessingHint, Interest, LearningIndicator, LinguisticMarkers, Message, ChatStats, AuthRequestCode, AuthSubmitCode, AuthStatus, PersonaChange, PersonaMirror, PersonalExpression, PhoneCodeHash, ProblemSolvingTendencies, UserProfileInsights, ValueMotivator, ChatSummary
 from typing import List, Optional, Dict
 
 router = APIRouter()
@@ -173,3 +173,14 @@ async def get_persona_mirror(
     """
     result = await TelegramService.analyze_persona_mirror(tg_client, chat_id, analyze_person)
     return result
+
+@router.get("/chats/{chat_id}/summary", response_model=ChatSummary)
+async def get_chat_summary(
+    chat_id: int,
+    max_tokens: int = Query(4000, ge=500, le=16000, description="Максимум токенов для анализа"),
+    tg_client = Depends(get_telegram_client)
+):
+    """
+    Получить TL;DR (summary), key points, важные сообщения и последние непрочитанные сообщения по чату.
+    """
+    return await TelegramService.summarize_chat(tg_client, chat_id, max_tokens)
